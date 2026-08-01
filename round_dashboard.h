@@ -119,15 +119,27 @@ void draw_bezel(It &it, const Palette &p) {
   }
 }
 
-// Presence alert: the outer ring becomes a solid red band.
+// Alert ring: the outer ring becomes a solid band in `color`.
+// Red for presence, green while the BOOT button is held.
 template<class It>
-void draw_presence_ring(It &it) {
-  Color red = Color(235, 30, 30);
+void draw_alert_ring(It &it, Color color) {
   for (float a = 0.0f; a < 360.0f; a += 0.5f) {
     float ar = deg2rad(a);
     it.line(CENTER + (int)(cosf(ar) * 108), CENTER + (int)(sinf(ar) * 108),
-            CENTER + (int)(cosf(ar) * 118), CENTER + (int)(sinf(ar) * 118), red);
+            CENTER + (int)(cosf(ar) * 118), CENTER + (int)(sinf(ar) * 118), color);
   }
+}
+
+// Presence alert: solid red band.
+template<class It>
+void draw_presence_ring(It &it) {
+  draw_alert_ring(it, Color(235, 30, 30));
+}
+
+// Button press: same solid band, green.
+template<class It>
+void draw_button_ring(It &it) {
+  draw_alert_ring(it, Color(30, 210, 80));
 }
 
 // The current-second highlight tick (longer + thicker), drawn last so it sits on top.

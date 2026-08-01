@@ -347,8 +347,9 @@ binary_sensor:
     internal: true
 
   # BOOT button (GPIO9) published to Home Assistant so automations can react to
-  # it. GPIO9 is a strapping pin: a press while running is fine, but do NOT hold
-  # it at power-on (that enters flash mode).
+  # it. While held, the outer ring turns solid green (same band as the red
+  # presence ring). GPIO9 is a strapping pin: a press while running is fine, but
+  # do NOT hold it at power-on (that enters flash mode).
   - platform: gpio
     name: "Boot Button"
     id: boot_button
@@ -358,6 +359,12 @@ binary_sensor:
         input: true
         pullup: true
       inverted: true
+    # The display refreshes once a second, so redraw immediately on both edges
+    # or a short tap would never be shown.
+    on_press:
+      - lambda: 'id(disp).update();'
+    on_release:
+      - lambda: 'id(disp).update();'
 
 text_sensor:
   # Weather entity state = current condition string (sunny, rainy, ...).
@@ -385,11 +392,14 @@ display:
       auto now = id(ha_time).now();
       int sec = now.is_valid() ? now.second : -1;
       bool presence = id(presence_sensor).state;
+      bool button = id(boot_button).state;
 
-      // Outer bezel (or a solid red ring when presence is detected).
+      // Outer bezel, or a solid ring: green while the BOOT button is held
+      // (takes priority), red when presence is detected.
       // The current-second tick is drawn LAST so it sits on top of everything.
-      if (presence) rd::draw_presence_ring(it);
-      else          rd::draw_bezel(it, p);
+      if (button)        rd::draw_button_ring(it);
+      else if (presence) rd::draw_presence_ring(it);
+      else               rd::draw_bezel(it, p);
 
       // Main concentric gauges: Electricity (outer) + Gas (inner), HA-scaled.
       float elec = id(house_load).state;
@@ -445,4 +455,4 @@ display:
       it.printf(150, 166, id(font_label), p.humidity, TextAlign::CENTER, "HUM");
 
       // Seconds tick LAST, so it draws over everything else (labels, connectors).
-      if (!presence && sec >= 0) rd::draw_seconds_tick(it, sec, p.seconds);
+      if (!presence && !button && sec >= 0) rd::draw_seconds_tick(it, sec, p.seconds);
