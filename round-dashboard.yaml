@@ -1,0 +1,585 @@
+substitutions:
+  house_load_entity: sensor.octopus_energy_electricity_21m0382813_1800019110490_current_demand
+  gas_usage_entity: sensor.octopus_energy_gas_e6e06376882221_1091943707_current_accumulative_consumption_m3
+  outdoor_temp_entity: sensor.th_outdoors_temperature_2
+  outdoor_humidity_entity: sensor.th_outdoors_humidity_2
+  presence_entity: binary_sensor.drive_person
+  weather_entity: weather.forecast_home
+  # Gauge min/max are runtime-adjustable from Home Assistant (see `number:` below).
+
+esphome:
+  name: round-dashboard
+  friendly_name: Round Dashboard
+  on_boot:
+    # priority -100 runs after all component restores, so this wins over any
+    # stale restored value. Screen + Dark Mode always start ON (until HA changes
+    # them at runtime); rescue a zero brightness so the screen is visible.
+    priority: -100
+    then:
+      - lambda: |-
+          id(dark_mode) = true;
+          id(screen_on) = true;
+          if (id(brightness_pct) <= 0.0f) id(brightness_pct) = 100.0f;
+      - script.execute: apply_backlight
+      - script.execute: apply_rotation
+
+esp32:
+  board: esp32-c3-devkitm-1
+  variant: esp32c3
+  flash_size: 4MB
+  framework:
+    type: arduino
+
+logger:
+
+api:
+  encryption:
+    key: "7udvHY95Ab6vnmrgyQMos6s6JiQL21VUN/8egP0xS9Y="
+
+ota:
+  - platform: esphome
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  # HA can't resolve mDNS (.local) on this network, so tell ESPHome tooling
+  # to reach the device by IP directly. Keep this IP stable via a DHCP
+  # reservation for MAC F0:F5:BD:E9:C4:10 (or a manual_ip block).
+  use_address: 10.12.13.192
+  ap:
+    ssid: Round Dashboard Fallback Hotspot
+    password: "zbM8eexLsZ2C"
+
+captive_portal:
+
+time:
+  - platform: sntp
+    id: ha_time
+    timezone: Europe/London
+
+spi:
+  clk_pin: GPIO6
+  mosi_pin: GPIO7
+
+i2c:
+  sda: GPIO4
+  scl: GPIO5
+  scan: true      # boot log reports a device at 0x15 only if the touch chip exists
+
+# Tap the screen to toggle dark (night) mode. Requires the CST816 touch
+# controller, which is only present on the "C" (touch) board variant.
+touchscreen:
+  platform: cst816
+  id: touch
+  interrupt_pin: GPIO0
+  skip_probe: true
+  # reset_pin is shared with the display on GPIO1 (owned by the display component).
+  on_release:
+    then:
+      - lambda: 'id(dark_mode) = !id(dark_mode);'
+
+globals:
+  - id: dark_mode
+    type: bool
+    restore_value: true     # always ON (dark) after every reboot
+    initial_value: 'true'    # dark theme by default
+  - id: brightness_pct
+    type: float
+    restore_value: true
+    initial_value: '100.0'
+  - id: screen_on
+    type: bool
+    restore_value: true     # always ON after every reboot
+    initial_value: 'true'
+  - id: rotation_deg
+    type: int
+    restore_value: true
+    initial_value: '180'     # default 180 degrees
+
+# Drives the hardware backlight PWM: brightness level while the screen is on,
+# fully off when the Screen switch is off. Called from the Brightness number,
+# the Screen switch, and on boot.
+script:
+  - id: apply_backlight
+    then:
+      - output.set_level:
+          id: backlight_pwm
+          level: !lambda 'return id(screen_on) ? (id(brightness_pct) / 100.0f) : 0.0f;'
+
+  - id: apply_rotation
+    then:
+      - lambda: |-
+          switch ((int) id(rotation_deg)) {
+            case 0:   id(disp).set_rotation(display::DISPLAY_ROTATION_0_DEGREES); break;
+            case 90:  id(disp).set_rotation(display::DISPLAY_ROTATION_90_DEGREES); break;
+            case 270: id(disp).set_rotation(display::DISPLAY_ROTATION_270_DEGREES); break;
+            default:  id(disp).set_rotation(display::DISPLAY_ROTATION_180_DEGREES); break;
+          }
+      - lambda: 'id(disp).update();'
+
+# Dark/Light theme (on = dark) + Screen power. Brightness is a separate Number
+# and the theme never affects brightness.
+switch:
+  - platform: template
+    name: "Dark Mode"
+    id: dark_switch
+    icon: "mdi:theme-light-dark"
+    lambda: 'return id(dark_mode);'
+    turn_on_action:
+      - lambda: 'id(dark_mode) = true;'
+    turn_off_action:
+      - lambda: 'id(dark_mode) = false;'
+
+  # Screen power (on/off), separate from the Brightness level.
+  - platform: template
+    name: "Screen"
+    id: screen_power
+    icon: "mdi:monitor"
+    lambda: 'return id(screen_on);'
+    turn_on_action:
+      - lambda: 'id(screen_on) = true;'
+      - script.execute: apply_backlight
+    turn_off_action:
+      - lambda: 'id(screen_on) = false;'
+      - script.execute: apply_backlight
+
+# Screen rotation, applied live via the display's set_rotation().
+select:
+  - platform: template
+    name: "Screen Rotation"
+    id: rotation_select
+    icon: "mdi:screen-rotation"
+    options: ["0", "90", "180", "270"]
+    lambda: 'return std::to_string((int) id(rotation_deg));'
+    set_action:
+      - lambda: 'id(rotation_deg) = atoi(x.c_str());'
+      - script.execute: apply_rotation
+
+# HA-adjustable gauge ranges (min/max) for all four gauges. restore_value keeps
+# changes across reboots; the display lambda reads these each frame.
+number:
+  # Backlight brightness level — multiple values (0-100%). Screen on/off is the
+  # separate "Screen" switch above.
+  - platform: template
+    name: "Brightness"
+    id: screen_brightness
+    icon: "mdi:brightness-6"
+    unit_of_measurement: "%"
+    min_value: 0
+    max_value: 100
+    step: 5
+    mode: slider
+    lambda: 'return id(brightness_pct);'
+    set_action:
+      - lambda: 'id(brightness_pct) = x;'
+      - script.execute: apply_backlight
+
+  - platform: template
+    name: "Electricity gauge min"
+    id: elec_min
+    optimistic: true
+    restore_value: true
+    initial_value: 0
+    min_value: 0
+    max_value: 20000
+    step: 100
+    unit_of_measurement: W
+    entity_category: config
+    mode: box
+  - platform: template
+    name: "Electricity gauge max"
+    id: elec_max
+    optimistic: true
+    restore_value: true
+    initial_value: 10000
+    min_value: 0
+    max_value: 20000
+    step: 100
+    unit_of_measurement: W
+    entity_category: config
+    mode: box
+  - platform: template
+    name: "Gas gauge min"
+    id: gas_min
+    optimistic: true
+    restore_value: true
+    initial_value: 0
+    min_value: 0
+    max_value: 50
+    step: 0.5
+    unit_of_measurement: "m³"
+    entity_category: config
+    mode: box
+  - platform: template
+    name: "Gas gauge max"
+    id: gas_max
+    optimistic: true
+    restore_value: true
+    initial_value: 20
+    min_value: 0
+    max_value: 50
+    step: 0.5
+    unit_of_measurement: "m³"
+    entity_category: config
+    mode: box
+  - platform: template
+    name: "Temperature gauge min"
+    id: temp_min
+    optimistic: true
+    restore_value: true
+    initial_value: -10
+    min_value: -40
+    max_value: 60
+    step: 1
+    unit_of_measurement: "°C"
+    entity_category: config
+    mode: box
+  - platform: template
+    name: "Temperature gauge max"
+    id: temp_max
+    optimistic: true
+    restore_value: true
+    initial_value: 40
+    min_value: -40
+    max_value: 60
+    step: 1
+    unit_of_measurement: "°C"
+    entity_category: config
+    mode: box
+  - platform: template
+    name: "Humidity gauge min"
+    id: hum_min
+    optimistic: true
+    restore_value: true
+    initial_value: 0
+    min_value: 0
+    max_value: 100
+    step: 1
+    unit_of_measurement: "%"
+    entity_category: config
+    mode: box
+  - platform: template
+    name: "Humidity gauge max"
+    id: hum_max
+    optimistic: true
+    restore_value: true
+    initial_value: 100
+    min_value: 0
+    max_value: 100
+    step: 1
+    unit_of_measurement: "%"
+    entity_category: config
+    mode: box
+
+output:
+  - platform: ledc
+    pin: GPIO3
+    id: backlight_pwm
+
+font:
+  - file:
+      type: gfonts
+      family: Share Tech Mono
+    id: font_time
+    size: 26
+  - file:
+      type: gfonts
+      family: Orbitron
+      weight: 500
+    id: font_val
+    size: 12
+  - file:
+      type: gfonts
+      family: Space Grotesk
+      weight: 500
+    id: font_label
+    size: 10
+  # Material Design Icons (matches HA weather icons). Only the 15 weather
+  # condition glyphs are pulled in.
+  - file: "https://github.com/Templarian/MaterialDesign-Webfont/raw/master/fonts/materialdesignicons-webfont.ttf"
+    id: font_weather
+    size: 29
+    glyphs:
+      - "\U000F0599"  # sunny
+      - "\U000F0594"  # clear-night (night)
+      - "\U000F0595"  # partlycloudy
+      - "\U000F0590"  # cloudy
+      - "\U000F0591"  # fog
+      - "\U000F0592"  # hail
+      - "\U000F0593"  # lightning
+      - "\U000F067E"  # lightning-rainy
+      - "\U000F0596"  # pouring
+      - "\U000F0597"  # rainy
+      - "\U000F0598"  # snowy
+      - "\U000F067F"  # snowy-rainy
+      - "\U000F059D"  # windy
+      - "\U000F059E"  # windy-variant
+      - "\U000F0F2F"  # exceptional
+
+sensor:
+  - platform: homeassistant
+    id: house_load
+    entity_id: ${house_load_entity}
+    internal: true
+
+  - platform: homeassistant
+    id: gas_usage
+    entity_id: ${gas_usage_entity}
+    internal: true
+
+  - platform: homeassistant
+    id: outdoor_temp
+    entity_id: ${outdoor_temp_entity}
+    internal: true
+
+  - platform: homeassistant
+    id: outdoor_humidity
+    entity_id: ${outdoor_humidity_entity}
+    internal: true
+
+binary_sensor:
+  # Presence sensor: when detected, the outer seconds ring turns solid red.
+  - platform: homeassistant
+    id: presence_sensor
+    entity_id: ${presence_entity}
+    internal: true
+
+text_sensor:
+  # Weather entity state = current condition string (sunny, rainy, ...).
+  - platform: homeassistant
+    id: weather_condition
+    entity_id: ${weather_entity}
+    internal: true
+
+display:
+  - platform: mipi_spi
+    id: disp
+    model: GC9A01A
+    invert_colors: true
+    reset_pin: GPIO1
+    cs_pin: GPIO10
+    dc_pin: GPIO2
+    dimensions: 240x240
+    # Rotation is set at runtime from the "Screen Rotation" select (default 180)
+    # via set_rotation() in the apply_rotation script.
+    update_interval: 1s
+    lambda: |-
+      auto deg2rad = [](float d) -> float { return d * 3.14159265f / 180.0f; };
+      auto clamp01 = [](float v) -> float { return v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v); };
+      // Map a value onto 0..1 given HA-configured min/max (0 if unusable).
+      auto scale = [&](float v, float lo, float hi) -> float {
+        if (isnan(v) || isnan(lo) || isnan(hi) || hi <= lo) return 0.0f;
+        return clamp01((v - lo) / (hi - lo));
+      };
+
+      // One radial block; when wide it is SOLID-filled (~3px) by sweeping
+      // sub-angles finely so there is no empty gap inside the block.
+      auto seg = [&](int cx, int cy, int inner, int outer, float a, Color col, bool wide) {
+        if (wide) {
+          for (float o = -0.9f; o <= 0.9f + 1e-4f; o += 0.3f) {
+            float aa = a + deg2rad(o);
+            it.line(cx + (int)(cosf(aa) * inner), cy + (int)(sinf(aa) * inner),
+                    cx + (int)(cosf(aa) * outer), cy + (int)(sinf(aa) * outer), col);
+          }
+        } else {
+          it.line(cx + (int)(cosf(a) * inner), cy + (int)(sinf(a) * inner),
+                  cx + (int)(cosf(a) * outer), cy + (int)(sinf(a) * outer), col);
+        }
+      };
+
+      // Segmented "digital bar" arc gauge; active segments thicker than idle.
+      auto draw_arc = [&](int cx, int cy, int inner, int outer, float pct,
+                          Color active, Color idle, float start_deg, float end_deg,
+                          float step_deg, bool wide_active, bool wide_idle) {
+        float start = deg2rad(start_deg);
+        float end = deg2rad(end_deg);
+        float limit = start + (end - start) * clamp01(pct);
+        for (float a = start; a <= end + 0.0001f; a += deg2rad(step_deg)) {
+          bool on = a <= limit;
+          seg(cx, cy, inner, outer, a, on ? active : idle, on ? wide_active : wide_idle);
+        }
+      };
+
+      // Thin 1px arc (polyline) at a given radius across [start,end] degrees.
+      auto arc_line = [&](float radius, float start_deg, float end_deg, Color col) {
+        float start = deg2rad(start_deg), end = deg2rad(end_deg);
+        int px = 120 + (int)(cosf(start) * radius), py = 120 + (int)(sinf(start) * radius);
+        for (float a = start; a <= end + 1e-4f; a += deg2rad(2.0f)) {
+          int x = 120 + (int)(cosf(a) * radius), y = 120 + (int)(sinf(a) * radius);
+          it.line(px, py, x, y, col);
+          px = x; py = y;
+        }
+      };
+
+      // Connector arc across the bottom gap, leaving `half_gap_px` clearance on
+      // each side of the centered label so the line stops before the text.
+      auto connector = [&](float radius, Color col, float half_gap_px) {
+        float ratio = half_gap_px / radius;
+        if (ratio > 1.0f) ratio = 1.0f;
+        float edge = acosf(ratio) * 180.0f / 3.14159265f;   // gap edge angle
+        arc_line(radius, 40.0f, edge, col);
+        arc_line(radius, 180.0f - edge, 140.0f, col);
+      };
+
+      // Small sub-dial gauge: 6 ticks; 2px wide when active, 1px when idle.
+      auto sub_gauge = [&](int cx, int cy, float pct, Color active, Color idle) {
+        const int inner = 16, outer = 22, N = 16;   // 16 ticks
+        const float rmid = (inner + outer) / 2.0f;
+        for (int i = 0; i < N; i++) {
+          float a = deg2rad(150.0f + 240.0f * i / (N - 1));
+          bool on = pct >= (i + 0.5f) / N;
+          Color col = on ? active : idle;
+          if (on) {
+            // Solid ~3px filled tick: dense tangential sweep (0.5px steps) so
+            // the block has no gaps at any radius.
+            for (float d = -1.5f; d <= 1.5f + 1e-3f; d += 0.5f) {
+              float aa = a + d / rmid;
+              it.line(cx + (int)roundf(cosf(aa) * inner), cy + (int)roundf(sinf(aa) * inner),
+                      cx + (int)roundf(cosf(aa) * outer), cy + (int)roundf(sinf(aa) * outer), col);
+            }
+          } else {
+            it.line(cx + (int)roundf(cosf(a) * inner), cy + (int)roundf(sinf(a) * inner),
+                    cx + (int)roundf(cosf(a) * outer), cy + (int)roundf(sinf(a) * outer), col);
+          }
+        }
+      };
+
+      // ---- Theme palette (Dark / Light) ----
+      bool dark = id(dark_mode);
+      Color bg        = dark ? Color(8, 14, 24)     : Color(233, 239, 247);
+      Color ink       = dark ? Color(242, 247, 255) : Color(20, 30, 46);
+      Color ink_dim   = dark ? Color(159, 178, 204) : Color(90, 106, 128);
+      Color ink_off   = dark ? Color(120, 140, 165) : Color(150, 165, 185);
+      Color bez_major = dark ? Color(150, 175, 205) : Color(120, 140, 165);
+      Color bez_minor = dark ? Color(80, 100, 125)  : Color(184, 198, 214);
+      Color well      = dark ? Color(8, 16, 29)     : Color(214, 224, 236);
+      Color c_elec    = dark ? Color(56, 189, 248)  : Color(2, 122, 190);
+      Color c_gas     = dark ? Color(255, 157, 92)  : Color(200, 105, 30);
+      Color c_temp    = dark ? Color(255, 143, 107) : Color(206, 74, 44);
+      Color c_hum     = dark ? Color(70, 214, 192)  : Color(12, 140, 120);
+      Color t_elec    = dark ? Color(60, 110, 150)  : Color(196, 214, 230);
+      Color t_gas     = dark ? Color(140, 95, 60)   : Color(232, 208, 184);
+      Color t_sub     = dark ? Color(60, 75, 90)    : Color(200, 210, 222);
+      Color v_elec    = dark ? Color(157, 216, 251) : Color(2, 108, 168);
+      Color v_gas     = dark ? Color(255, 195, 154) : Color(180, 92, 24);
+
+      it.fill(bg);
+
+      // Time is needed early: the outer bezel doubles as a live seconds ring.
+      auto now = id(ha_time).now();
+      int sec = now.is_valid() ? now.second : -1;
+      Color sec_hl = dark ? Color(255, 95, 95) : Color(205, 45, 45);
+      bool presence = id(presence_sensor).state;
+
+      if (presence) {
+        // Presence detected: the outer ring becomes a solid red band.
+        Color red = Color(235, 30, 30);
+        for (float a = 0.0f; a < 360.0f; a += 0.5f) {
+          float ar = deg2rad(a);
+          it.line(120 + (int)(cosf(ar) * 108), 120 + (int)(sinf(ar) * 108),
+                  120 + (int)(cosf(ar) * 118), 120 + (int)(sinf(ar) * 118), red);
+        }
+      } else {
+        // Swiss bezel: 60 base ticks. The current-second tick is drawn LAST
+        // (end of the lambda) so it sits on top of everything.
+        for (int i = 0; i < 60; i++) {
+          float a = deg2rad(i * 6 - 90);
+          bool major = (i % 5) == 0;
+          int r_out = 118;
+          int r_in = major ? 108 : 113;
+          it.line(120 + (int)(cosf(a) * r_in), 120 + (int)(sinf(a) * r_in),
+                  120 + (int)(cosf(a) * r_out), 120 + (int)(sinf(a) * r_out),
+                  major ? bez_major : bez_minor);
+        }
+      }
+
+      // Main concentric gauges: Electricity (outer) + Gas (inner), HA-scaled.
+      // Discrete ~3px ticks, each active tick solid-filled; thin idle track.
+      float elec = id(house_load).state;
+      float gas = id(gas_usage).state;
+      float elec_pct = scale(elec, id(elec_min).state, id(elec_max).state);
+      float gas_pct = scale(gas, id(gas_min).state, id(gas_max).state);
+      draw_arc(120, 120, 96, 110, elec_pct, c_elec, t_elec, -220, 40, 4, true, false);
+      draw_arc(120, 120, 78, 92, gas_pct, c_gas, t_gas, -220, 40, 4, true, false);
+
+      // Electricity & Gas value strings (Gas inner/above, Electricity outer/below).
+      char elec_s[24], gas_s[24];
+      if (isnan(elec)) snprintf(elec_s, sizeof(elec_s), "-- W"); else snprintf(elec_s, sizeof(elec_s), "%.0f W", elec);
+      if (isnan(gas)) snprintf(gas_s, sizeof(gas_s), "-- m3"); else snprintf(gas_s, sizeof(gas_s), "%.1f m3", gas);
+
+      // Connector arc from each ring toward its label, stopping 3px short of the
+      // label text on each side (gap sized to the measured label width).
+      int lx, ly, ew, eh, gw, gh;
+      it.get_text_bounds(0, 0, elec_s, id(font_val), TextAlign::TOP_LEFT, &lx, &ly, &ew, &eh);
+      it.get_text_bounds(0, 0, gas_s, id(font_val), TextAlign::TOP_LEFT, &lx, &ly, &gw, &gh);
+      connector(103.0f, c_elec, ew / 2.0f + 3.0f);
+      connector(85.0f, c_gas, gw / 2.0f + 3.0f);
+
+      // Centered on each ring's mid-radius (same radius as its connector arc),
+      // so the text edges line up with the ring band edges.
+      it.printf(120, 202, id(font_val), v_gas, TextAlign::CENTER, "%s", gas_s);
+      it.printf(120, 220, id(font_val), v_elec, TextAlign::CENTER, "%s", elec_s);
+
+      // Weather condition icon (top center) from HA weather.forecast_home.
+      std::string wc = id(weather_condition).state;
+      const char* wi = nullptr;
+      if      (wc == "sunny")           wi = "\U000F0599";
+      else if (wc == "clear-night")     wi = "\U000F0594";
+      else if (wc == "partlycloudy")    wi = "\U000F0595";
+      else if (wc == "cloudy")          wi = "\U000F0590";
+      else if (wc == "fog")             wi = "\U000F0591";
+      else if (wc == "hail")            wi = "\U000F0592";
+      else if (wc == "lightning")       wi = "\U000F0593";
+      else if (wc == "lightning-rainy") wi = "\U000F067E";
+      else if (wc == "pouring")         wi = "\U000F0596";
+      else if (wc == "rainy")           wi = "\U000F0597";
+      else if (wc == "snowy")           wi = "\U000F0598";
+      else if (wc == "snowy-rainy")     wi = "\U000F067F";
+      else if (wc == "windy")           wi = "\U000F059D";
+      else if (wc == "windy-variant")   wi = "\U000F059E";
+      else if (wc == "exceptional")     wi = "\U000F0F2F";
+      if (wi != nullptr) it.printf(120, 57, id(font_weather), ink, TextAlign::CENTER, "%s", wi);
+
+      // Center: Date over Time.
+      static const char *const wd[] = {"Sun","Mon","Tue","Wed","Thu","Fri","Sat"};
+      static const char *const mo[] = {"Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"};
+      if (now.is_valid()) {
+        it.printf(120, 84, id(font_val), ink_dim, TextAlign::CENTER,
+                  "%s, %d %s", wd[now.day_of_week - 1], now.day_of_month, mo[now.month - 1]);
+        it.strftime(120, 108, id(font_time), ink, TextAlign::CENTER, "%H:%M:%S", now);
+      } else {
+        it.printf(120, 108, id(font_time), ink_off, TextAlign::CENTER, "--:--:--");
+      }
+
+      // Temperature (left) + Humidity (right) sub-dials below the time, coarse (~1/4 lines).
+      float temp = id(outdoor_temp).state;
+      float temp_pct = scale(temp, id(temp_min).state, id(temp_max).state);
+      it.filled_circle(90, 152, 25, well);
+      sub_gauge(90, 152, temp_pct, c_temp, t_sub);
+      if (isnan(temp)) {
+        it.printf(90, 150, id(font_val), ink, TextAlign::CENTER, "--");
+      } else {
+        it.printf(90, 150, id(font_val), ink, TextAlign::CENTER, "%.1f", temp);
+      }
+      it.printf(90, 166, id(font_label), c_temp, TextAlign::CENTER, "TEMP");
+
+      float hum = id(outdoor_humidity).state;
+      float hum_pct = scale(hum, id(hum_min).state, id(hum_max).state);
+      it.filled_circle(150, 152, 25, well);
+      sub_gauge(150, 152, hum_pct, c_hum, t_sub);
+      if (isnan(hum)) {
+        it.printf(150, 150, id(font_val), ink, TextAlign::CENTER, "--");
+      } else {
+        it.printf(150, 150, id(font_val), ink, TextAlign::CENTER, "%.0f%%", hum);
+      }
+      it.printf(150, 166, id(font_label), c_hum, TextAlign::CENTER, "HUM");
+
+      // Seconds tick LAST, so it draws over everything else (labels, connectors).
+      if (!presence && sec >= 0) {
+        float a = deg2rad(sec * 6 - 90);
+        for (float o = -0.9f; o <= 0.9f + 1e-4f; o += 0.45f) {
+          float aa = a + deg2rad(o);
+          it.line(120 + (int)(cosf(aa) * 103), 120 + (int)(sinf(aa) * 103),
+                  120 + (int)(cosf(aa) * 118), 120 + (int)(sinf(aa) * 118), sec_hl);
+        }
+      }

@@ -1,0 +1,14 @@
+services:
+  esphome:
+    image: ghcr.io/esphome/esphome:latest
+    volumes:
+      - ./:/config        # configs, secrets.yaml, and .esphome/ build cache live here
+    tty: true
+    stdin_open: true
+    restart: "no"
+    # NOTE: USB/serial flashing does NOT work through Docker on macOS (no USB passthrough).
+    #       The device is already flashed, so OTA (network) upload is used instead.
+    # On Linux, to enable serial flashing, uncomment:
+    # privileged: true
+    # devices:
+    #   - /dev/ttyUSB0:/dev/ttyUSB0
