@@ -15,6 +15,7 @@ brightness, rotation and gauge ranges all controllable from Home Assistant.
         ┌ outer bezel = 60 ticks; the current SECOND is a red tick ┐
         │      (turns SOLID RED while presence is detected)         │
         │  ┌ Electricity ring (outer) ── Gas ring (inner) ┐         │
+        │  │                  ☀  ← weather                 │        │
         │  │              Sat, 1 Aug                       │        │
         │  │              12:34:56                          │       │
         │  │           (TEMP)   (HUM)                       │       │
@@ -23,8 +24,9 @@ brightness, rotation and gauge ranges all controllable from Home Assistant.
         └───────────────────────────────────────────────────────────┘
 ```
 
+- **Weather icon** (top) — the current condition from `weather.forecast_home`, drawn as the matching Material Design Icons `weather-*` glyph.
 - **Electricity** (outer) and **Gas** (inner) rings — segmented 3px ticks, filled to the value.
-- **Temperature / Humidity** sub-dials below the clock (12 ticks each, 3px filled).
+- **Temperature / Humidity** sub-dials below the clock (16 ticks each, 3px filled).
 - **Date + time** in the centre; the outer bezel doubles as a seconds hand.
 - **Presence:** when the presence sensor is on, the outer ring goes solid red.
 
@@ -39,6 +41,7 @@ Set in the `substitutions:` block of `round-dashboard.yaml`:
 | Temperature  | `sensor.th_outdoors_temperature_2` |
 | Humidity     | `sensor.th_outdoors_humidity_2` |
 | Presence     | `binary_sensor.drive_person` |
+| Weather      | `weather.forecast_home` (state = current condition) |
 
 > `..._current_demand` (real-time electricity) only exists with an **Octopus Home Mini**.
 
@@ -49,6 +52,7 @@ Set in the `substitutions:` block of `round-dashboard.yaml`:
 - **Brightness** (number, 0–100%) — backlight level, independent of theme.
 - **Screen Rotation** (select) — 0 / 90 / 180 / 270°.
 - **Gauge min/max** (numbers) — adjustable range for all four gauges.
+- **Boot Button** (binary sensor) — the on-board BOOT button (GPIO9) published to HA, so automations can react to a press (no local action).
 
 **On boot:** Screen and Dark Mode always start **on**; Brightness defaults to 100%
 (persisted); Rotation defaults to 180° (persisted). HA can override any of these at runtime.
@@ -64,6 +68,27 @@ Set in the `substitutions:` block of `round-dashboard.yaml`:
 | Touch I²C SCL | GPIO5 | | |
 
 Touch (CST816) exists only on the **"C"** board variant; the **"N"** variant has no touch.
+
+### Ports (3)
+
+| Connector | Type | Pinout | Purpose |
+|-----------|------|--------|---------|
+| **USB-C** | — | ESP32-C3 native USB (D+ = GPIO19, D− = GPIO18) | Power + data + flashing |
+| **2-pin** | JST **1.25 mm** | `BAT+` / `GND` | 3.7V single-cell **LiPo**, charged/managed by the on-board **IP5306** |
+| **4-pin** | JST-SH **1.0 mm** | `3V3` / `GND` / `GPIO21 (TX)` / `GPIO20 (RX)` | **UART0** serial console / alt-flash |
+
+`GPIO20` / `GPIO21` (the UART pins) are **unused** by this config — the 4-pin connector is a
+solder-free spot to attach a UART peripheral (or use the two pins as GPIOs).
+
+### Buttons (3)
+
+- **BOOT** → **GPIO9** — a real GPIO. Used here as the **"Boot Button"** binary sensor published to HA. Strapping pin: a press while running is fine, but **don't hold it at power-on** (that enters flash mode).
+- **RESET / EN** — hardware reset; just reboots the chip (not a readable input).
+- **Side button** — wired to the **IP5306** power controller (wake / power), **not to the ESP32**, so firmware can't read it.
+
+Extra input option: the **`IO8` pad (GPIO8)** next to the USB connector has a pull-up — solder a
+switch to **GND** for another button (`binary_sensor` on `GPIO8`, `inverted: true`). ⚠️ GPIO8/GPIO9
+are strapping pins; avoid holding them low at power-on.
 
 ## Build & flash (Docker, no local ESPHome)
 
@@ -103,6 +128,7 @@ Only once the ESPHome **integration** is connected do the sensors populate and t
 | File | Purpose |
 |------|---------|
 | `round-dashboard.yaml` | the ESPHome config (device + watch-face lambda) |
+| `round_dashboard.h` | C++ helpers the lambda calls (theme palette + drawing functions) |
 | `Makefile` | build/flash/log commands (wraps `docker compose`) |
 | `docker-compose.yml` | ESPHome container used by the Makefile |
 | `secrets.yaml` | WiFi credentials (gitignored) |

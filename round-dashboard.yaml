@@ -346,6 +346,19 @@ binary_sensor:
     entity_id: ${presence_entity}
     internal: true
 
+  # BOOT button (GPIO9) published to Home Assistant so automations can react to
+  # it. GPIO9 is a strapping pin: a press while running is fine, but do NOT hold
+  # it at power-on (that enters flash mode).
+  - platform: gpio
+    name: "Boot Button"
+    id: boot_button
+    pin:
+      number: GPIO9
+      mode:
+        input: true
+        pullup: true
+      inverted: true
+
 text_sensor:
   # Weather entity state = current condition string (sunny, rainy, ...).
   - platform: homeassistant
