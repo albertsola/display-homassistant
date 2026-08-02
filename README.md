@@ -123,12 +123,53 @@ mDNS (`.local`) often doesn't reach Home Assistant on this network, so add the d
 
 Only once the ESPHome **integration** is connected do the sensors populate and the controls appear.
 
+## Case (3D-printed enclosure)
+
+A minimal Braun/Apple-style **matte-white round puck** in `case/round-dashboard-case.scad`
+(parametric OpenSCAD). The whole front is a **press-to-click** face: pressing the exposed screen
+floats the bezel + board and actuates the **GPIO9 BOOT** switch against a post in the body (touch
+works too on the "C" variant). **USB-C powered — no battery** is housed.
+
+| Assembled (`make render parts=fit`) | Cutaway (`make render parts=section`) |
+|:---:|:---:|
+| ![Assembled puck](docs/img/fit-iso.png) | ![Cross-section](docs/img/section-iso.png) |
+
+**Parts** (fully 3D-printable, no glass — the module has its own):
+
+| Part | Prints | Notes |
+|------|--------|-------|
+| **body** | floor-down | shallow round dish; boot post + a **USB-tab bay** (round pocket ∪ tab slot) the board drops into; open-topped USB port slot |
+| **bezel** | flat-show-face **down** on the plate | flat-top ring; open centre = the screen; skirt grips the PCB and is notched for the tab |
+| `pcb`, `jig` | reference / tooling | `pcb` = the module for fit-checking (not printed); `jig` = a keyed hole-grid to measure the BOOT switch X/Y |
+
+**Assembly:** the round + USB-tab board drops into the body **from the front** (screen up, tab into
+the bay), then the bezel caps it and its window shows the screen; the USB-C plug enters the bottom
+slot, which the bezel rim closes over the top.
+
+**Generate:** needs a local OpenSCAD (not Docker).
+
+```bash
+make render                     # preview PNGs of each part + the fitted assembly (case/renders/)
+make render parts="body fit"    # choose parts;  parts=section for a cutaway
+make stl                        # print-ready STLs -> case/stl/ (bezel auto-flipped flat-down)
+make stl stl_fn=240             # finer facets for the final export
+```
+
+Geometry is driven by `hardwarespec.md` (single source of truth for the board, from the datasheets
+in `docs/datasheets/`). Values tagged `[MEASURE]` — notably the BOOT switch X/Y — should be
+confirmed with the printed `jig` before a final print. Tolerances are standard calibrated FDM
+(0.4 mm nozzle) and live in one place in the `.scad`.
+
 ## Files
 
 | File | Purpose |
 |------|---------|
 | `round-dashboard.yaml` | the ESPHome config (device + watch-face lambda) |
 | `round_dashboard.h` | C++ helpers the lambda calls (theme palette + drawing functions) |
-| `Makefile` | build/flash/log commands (wraps `docker compose`) |
+| `Makefile` | build/flash/log **and** case render/STL commands (wraps `docker compose` / OpenSCAD) |
 | `docker-compose.yml` | ESPHome container used by the Makefile |
 | `secrets.yaml` | WiFi credentials (gitignored) |
+| `case/round-dashboard-case.scad` | parametric OpenSCAD enclosure (body + bezel + pcb/jig refs) |
+| `case/stl/` | print-ready STL exports (`make stl`) |
+| `hardwarespec.md` | physical spec of the board — drives the case geometry |
+| `docs/datasheets/` | vendor board + ESP32-C3 datasheets (case reference) |

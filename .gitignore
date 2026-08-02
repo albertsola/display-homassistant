@@ -4,3 +4,9 @@
 /.esphome/
 /secrets.yaml
 /.idea/
+
+# macOS
+.DS_Store
+
+# Case: OpenSCAD preview renders are regenerable (`make render`); keep source + STLs
+/case/renders/
