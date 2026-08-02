@@ -35,11 +35,11 @@ substitutions:
   color_humidity_dark:           "70, 214, 192"
   color_humidity_light:          "12, 140, 120"
   color_electricity_track_dark:  "60, 110, 150"
-  color_electricity_track_light: "196, 214, 230"
+  color_electricity_track_light: "140, 165, 192"   # darker for contrast on light bg (was 196, 214, 230)
   color_gas_track_dark:          "140, 95, 60"
-  color_gas_track_light:         "232, 208, 184"
+  color_gas_track_light:         "198, 166, 134"   # darker for contrast on light bg (was 232, 208, 184)
   color_sub_dial_track_dark:     "60, 75, 90"
-  color_sub_dial_track_light:    "200, 210, 222"
+  color_sub_dial_track_light:    "146, 160, 178"   # darker for contrast on light bg (was 200, 210, 222)
   color_electricity_value_dark:  "157, 216, 251"
   color_electricity_value_light: "2, 108, 168"
   color_gas_value_dark:          "255, 195, 154"
