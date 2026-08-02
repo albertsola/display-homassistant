@@ -59,16 +59,27 @@ inline const char *weather_glyph(const std::string &c) {
 
 // ---- geometry primitives (templated on the display type) ----
 
-// One radial tick at angle `a` (radians). When `wide`, it is solid-filled (~3px)
-// by sweeping sub-angles finely so there is no empty gap inside the block.
+// Solid-fill the trapezoid between `inner` and `outer` radius spanning angles
+// [a0, a1] (radians) about (cx, cy), as two filled triangles. Used for every
+// filled block (ring ticks, seconds tick, sub-dial ticks) instead of sweeping
+// many thin lines.
+template<class It>
+void fill_radial_quad(It &it, int cx, int cy, int inner, int outer,
+                      float a0, float a1, Color col) {
+  int ix0 = cx + (int)roundf(cosf(a0) * inner), iy0 = cy + (int)roundf(sinf(a0) * inner);
+  int ox0 = cx + (int)roundf(cosf(a0) * outer), oy0 = cy + (int)roundf(sinf(a0) * outer);
+  int ox1 = cx + (int)roundf(cosf(a1) * outer), oy1 = cy + (int)roundf(sinf(a1) * outer);
+  int ix1 = cx + (int)roundf(cosf(a1) * inner), iy1 = cy + (int)roundf(sinf(a1) * inner);
+  it.filled_triangle(ix0, iy0, ox0, oy0, ox1, oy1, col);
+  it.filled_triangle(ix0, iy0, ox1, oy1, ix1, iy1, col);
+}
+
+// One radial tick at angle `a` (radians). When `wide`, it is a solid ~3px block
+// (filled trapezoid); otherwise a single thin line.
 template<class It>
 void draw_tick(It &it, int cx, int cy, int inner, int outer, float a, Color col, bool wide) {
   if (wide) {
-    for (float o = -0.9f; o <= 0.9f + 1e-4f; o += 0.3f) {
-      float aa = a + deg2rad(o);
-      it.line(cx + (int)(cosf(aa) * inner), cy + (int)(sinf(aa) * inner),
-              cx + (int)(cosf(aa) * outer), cy + (int)(sinf(aa) * outer), col);
-    }
+    fill_radial_quad(it, cx, cy, inner, outer, a - deg2rad(0.9f), a + deg2rad(0.9f), col);
   } else {
     it.line(cx + (int)(cosf(a) * inner), cy + (int)(sinf(a) * inner),
             cx + (int)(cosf(a) * outer), cy + (int)(sinf(a) * outer), col);
@@ -105,11 +116,7 @@ void draw_bezel(It &it, const Palette &p) {
 // Red for presence, green while the BOOT button is held.
 template<class It>
 void draw_alert_ring(It &it, Color color) {
-  for (float a = 0.0f; a < 360.0f; a += 0.5f) {
-    float ar = deg2rad(a);
-    it.line(CENTER + (int)(cosf(ar) * 108), CENTER + (int)(sinf(ar) * 108),
-            CENTER + (int)(cosf(ar) * 118), CENTER + (int)(sinf(ar) * 118), color);
-  }
+  it.filled_ring(CENTER, CENTER, 118, 108, color);
 }
 
 // Presence alert: solid red band.
@@ -128,11 +135,7 @@ void draw_button_ring(It &it) {
 template<class It>
 void draw_seconds_tick(It &it, int second, Color color) {
   float a = deg2rad(second * 6 - 90);
-  for (float o = -0.9f; o <= 0.9f + 1e-4f; o += 0.45f) {
-    float aa = a + deg2rad(o);
-    it.line(CENTER + (int)(cosf(aa) * 103), CENTER + (int)(sinf(aa) * 103),
-            CENTER + (int)(cosf(aa) * 118), CENTER + (int)(sinf(aa) * 118), color);
-  }
+  fill_radial_quad(it, CENTER, CENTER, 103, 118, a - deg2rad(0.9f), a + deg2rad(0.9f), color);
 }
 
 // Main concentric gauge (Electricity/Gas): discrete ~3px ticks, active solid-filled,
@@ -168,12 +171,8 @@ void draw_sub_gauge(It &it, int cx, int cy, float pct, Color active, Color track
     bool on = pct >= (i + 0.5f) / N;
     Color col = on ? active : track;
     if (on) {
-      // dense tangential sweep (0.5px steps) so the block has no gaps at any radius
-      for (float d = -1.5f; d <= 1.5f + 1e-3f; d += 0.5f) {
-        float aa = a + d / rmid;
-        it.line(cx + (int)roundf(cosf(aa) * inner), cy + (int)roundf(sinf(aa) * inner),
-                cx + (int)roundf(cosf(aa) * outer), cy + (int)roundf(sinf(aa) * outer), col);
-      }
+      // solid block ~3px wide (±1.5px tangential half-width at the mid radius)
+      fill_radial_quad(it, cx, cy, inner, outer, a - 1.5f / rmid, a + 1.5f / rmid, col);
     } else {
       it.line(cx + (int)roundf(cosf(a) * inner), cy + (int)roundf(sinf(a) * inner),
               cx + (int)roundf(cosf(a) * outer), cy + (int)roundf(sinf(a) * outer), col);
