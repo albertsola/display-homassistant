@@ -125,7 +125,8 @@ Only once the ESPHome **integration** is connected do the sensors populate and t
 
 ## Case (3D-printed enclosure)
 
-A minimal Braun/Apple-style **matte-white round puck** in `case/round-dashboard-case.scad`
+Case variants each live in their own `case/<name>/` folder. The current one is a minimal
+Braun/Apple-style **matte-white round puck** in `case/flat_case/round-dashboard-case.scad`
 (parametric OpenSCAD). The whole front is a **press-to-click** face: pressing the exposed screen
 floats the bezel + board and actuates the **GPIO9 BOOT** switch against a post in the body (touch
 works too on the "C" variant). **USB-C powered — no battery** is housed.
@@ -149,10 +150,11 @@ slot, which the bezel rim closes over the top.
 **Generate:** needs a local OpenSCAD (not Docker).
 
 ```bash
-make render                     # preview PNGs of each part + the fitted assembly (case/renders/)
+make render                     # preview PNGs of each part + the fitted assembly (case/flat_case/renders/)
 make render parts="body fit"    # choose parts;  parts=section for a cutaway
-make stl                        # print-ready STLs -> case/stl/ (bezel auto-flipped flat-down)
+make stl                        # print-ready STLs -> case/flat_case/stl/ (bezel auto-flipped flat-down)
 make stl stl_fn=240             # finer facets for the final export
+make render case_dir=case/<name> # build a different case variant
 ```
 
 Geometry is driven by `hardwarespec.md` (single source of truth for the board, from the datasheets
@@ -169,7 +171,7 @@ confirmed with the printed `jig` before a final print. Tolerances are standard c
 | `Makefile` | build/flash/log **and** case render/STL commands (wraps `docker compose` / OpenSCAD) |
 | `docker-compose.yml` | ESPHome container used by the Makefile |
 | `secrets.yaml` | WiFi credentials (gitignored) |
-| `case/round-dashboard-case.scad` | parametric OpenSCAD enclosure (body + bezel + pcb/jig refs) |
-| `case/stl/` | print-ready STL exports (`make stl`) |
+| `case/flat_case/round-dashboard-case.scad` | parametric OpenSCAD enclosure (body + bezel + pcb/jig refs); one folder per case variant |
+| `case/flat_case/stl/` | print-ready STL exports (`make stl`) |
 | `hardwarespec.md` | physical spec of the board — drives the case geometry |
 | `docs/datasheets/` | vendor board + ESP32-C3 datasheets (case reference) |

@@ -14,7 +14,8 @@
 #   make render parts=section                        # cutaway (with PCB seated)
 #
 # Case STL export (print-ready, needs local OpenSCAD):
-#   make stl                                         # body + bezel -> case/stl/*.stl
+#   make stl                                         # body + bezel -> case/flat_case/stl/*.stl
+#   make render case_dir=case/other_case             # build a different case variant
 #   make stl stl_fn=240                              # finer facets for the final export
 
 file   ?= round-dashboard.yaml
@@ -22,15 +23,16 @@ device ?=
 
 DC = docker compose run --rm esphome
 
-# --- Case (OpenSCAD) ---
-scad     ?= case/round-dashboard-case.scad
+# --- Case (OpenSCAD) --- override `case_dir` to build a different case variant.
+case_dir ?= case/flat_case
+scad     ?= $(case_dir)/round-dashboard-case.scad
 parts    ?= body bezel pcb fit   # separated parts + the fitted assembly
-img_dir  ?= case/renders
+img_dir  ?= $(case_dir)/renders
 img_size ?= 1000,1000
 
 # STL export (print orientation). friendly-name:part — the bezel is exported FLIPPED
 # (flat show-face down on the bed) via the scad's `bezel_print` branch.
-stl_dir   ?= case/stl
+stl_dir   ?= $(case_dir)/stl
 stl_fn    ?= 180                          # export facets (finer than the preview $fn)
 stl_parts ?= body:body bezel:bezel_print
 

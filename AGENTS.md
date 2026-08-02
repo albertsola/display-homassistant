@@ -21,8 +21,8 @@ An ESPHome firmware config that turns an **ESP32-2424S012** (round 1.28" **GC9A0
 | `Makefile` | Build/flash/logs **and** case render/STL targets. |
 | `docker-compose.yml` | ESPHome container the Makefile wraps. |
 | `secrets.yaml` | WiFi creds — **gitignored**, never commit. `secrets.yaml.sample` is the template. |
-| `case/round-dashboard-case.scad` | Parametric enclosure (body + bezel + pcb/jig refs). |
-| `case/stl/`, `case/renders/` | STL exports (committed); PNG previews (gitignored). |
+| `case/<name>/round-dashboard-case.scad` | Parametric enclosure (body + bezel + pcb/jig refs); one folder per case variant (current: `case/flat_case/`). |
+| `case/<name>/stl/`, `case/<name>/renders/` | STL exports (committed); PNG previews (gitignored). |
 | `hardwarespec.md` | Physical board spec — the single source of truth for case geometry. |
 | `docs/datasheets/` | Vendor PDFs backing `hardwarespec.md`. |
 
@@ -35,8 +35,9 @@ Do **not** assume a local ESPHome/Python install.
 make build                         # compile firmware only (no device) — use this to verify YAML/C++ changes
 make run device=10.12.13.192       # compile + OTA-flash (device IP required; mDNS doesn't resolve from Docker)
 make logs device=10.12.13.192      # stream device logs
-make render                        # case preview PNGs -> case/renders/
-make stl                           # print-ready STLs -> case/stl/ (needs local OpenSCAD)
+make render                        # case preview PNGs -> case/flat_case/renders/
+make stl                           # print-ready STLs -> case/flat_case/stl/ (needs local OpenSCAD)
+make render case_dir=case/<name>   # build a different case variant
 ```
 
 - `file=<name>.yaml` overrides the config; `device=<ip>` targets an address.
