@@ -48,8 +48,11 @@ make stl                           # print-ready STLs -> case/stl/ (needs local 
 
 - **Keep the lambda thin.** `round-dashboard.yaml`'s display `lambda` reads HA state and
   calls `rd::` helpers; drawing/geometry/theme logic belongs in `round_dashboard.h`.
-- **Theming:** all colors come from `rd::make_palette(dark)` — add a `Palette` field rather
-  than hardcoding a `Color(...)` in the lambda. Every color has a dark and light value.
+- **Theming:** colors live as `color_*` substitutions at the top of `round-dashboard.yaml`
+  (a dark/light pair per element); the display lambda fills `rd::Palette` from them and the
+  `rd::` helpers only consume the struct. To add an element, add a `Palette` field in
+  `round_dashboard.h` plus its two substitutions and the lambda line together — don't hardcode
+  a `Color(...)`.
 - **HA entities** are set in the `substitutions:` block; the four gauges' min/max are
   runtime-adjustable `number:` entities read fresh each frame.
 - **Draw order matters:** background → ring/bezel → gauges → text → **seconds tick last**

@@ -14,36 +14,18 @@ using esphome::Color;
 
 static constexpr int CENTER = 120;   // face centre (240x240 panel)
 
-// ---- theme palette (replaces the bg/ink/c_*/t_*/v_* locals) ----
+// ---- theme palette ----
+// Colours are NOT hardcoded here: they live as `color_*` substitutions at the
+// top of round-dashboard.yaml (one dark/light pair per element), and the display
+// lambda fills this struct from them. To add an element, add a field here plus
+// its two substitutions together.
 struct Palette {
-  Color background, text, text_dim, text_off;
+  Color background, text, text_dimmed, text_off;
   Color bezel_major, bezel_minor, dial_well;
-  Color elec, gas, temp, humidity;          // gauge active colours
-  Color elec_track, gas_track, sub_track;   // idle track colours
-  Color elec_value, gas_value, seconds;     // value text + seconds highlight
+  Color electricity, gas, temperature, humidity;        // gauge active colours
+  Color electricity_track, gas_track, sub_dial_track;   // idle track colours
+  Color electricity_value, gas_value, seconds;          // value text + seconds highlight
 };
-
-inline Palette make_palette(bool dark) {
-  Palette p;
-  p.background   = dark ? Color(8, 14, 24)     : Color(233, 239, 247);
-  p.text         = dark ? Color(242, 247, 255) : Color(20, 30, 46);
-  p.text_dim     = dark ? Color(159, 178, 204) : Color(90, 106, 128);
-  p.text_off     = dark ? Color(120, 140, 165) : Color(150, 165, 185);
-  p.bezel_major  = dark ? Color(150, 175, 205) : Color(120, 140, 165);
-  p.bezel_minor  = dark ? Color(80, 100, 125)  : Color(184, 198, 214);
-  p.dial_well    = dark ? Color(8, 16, 29)     : Color(214, 224, 236);
-  p.elec         = dark ? Color(56, 189, 248)  : Color(2, 122, 190);
-  p.gas          = dark ? Color(255, 157, 92)  : Color(200, 105, 30);
-  p.temp         = dark ? Color(255, 143, 107) : Color(206, 74, 44);
-  p.humidity     = dark ? Color(70, 214, 192)  : Color(12, 140, 120);
-  p.elec_track   = dark ? Color(60, 110, 150)  : Color(196, 214, 230);
-  p.gas_track    = dark ? Color(140, 95, 60)   : Color(232, 208, 184);
-  p.sub_track    = dark ? Color(60, 75, 90)    : Color(200, 210, 222);
-  p.elec_value   = dark ? Color(157, 216, 251) : Color(2, 108, 168);
-  p.gas_value    = dark ? Color(255, 195, 154) : Color(180, 92, 24);
-  p.seconds      = dark ? Color(255, 95, 95)   : Color(205, 45, 45);
-  return p;
-}
 
 // ---- small math helpers ----
 inline float deg2rad(float d) { return d * 3.14159265f / 180.0f; }

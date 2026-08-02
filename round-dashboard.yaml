@@ -7,6 +7,46 @@ substitutions:
   weather_entity: weather.forecast_home
   # Gauge min/max are runtime-adjustable from Home Assistant (see `number:` below).
 
+  # ---- Theme colours (R, G, B) ----
+  # One dark/light pair per screen element. The display lambda builds the
+  # rd::Palette from these and picks dark or light by the Dark Mode state.
+  # Edit here, then `make build` + OTA-flash. Field names match rd::Palette in
+  # round_dashboard.h one-to-one.
+  color_background_dark:         "0, 0, 0"     # full black (OLED-style; was 8, 14, 24)
+  color_background_light:        "233, 239, 247"
+  color_text_dark:               "242, 247, 255"
+  color_text_light:              "20, 30, 46"
+  color_text_dimmed_dark:        "159, 178, 204"
+  color_text_dimmed_light:       "90, 106, 128"
+  color_text_off_dark:           "120, 140, 165"
+  color_text_off_light:          "150, 165, 185"
+  color_bezel_major_dark:        "150, 175, 205"
+  color_bezel_major_light:       "120, 140, 165"
+  color_bezel_minor_dark:        "80, 100, 125"
+  color_bezel_minor_light:       "184, 198, 214"
+  color_dial_well_dark:          "8, 16, 29"
+  color_dial_well_light:         "214, 224, 236"
+  color_electricity_dark:        "56, 189, 248"
+  color_electricity_light:       "2, 122, 190"
+  color_gas_dark:                "255, 157, 92"
+  color_gas_light:               "200, 105, 30"
+  color_temperature_dark:        "255, 143, 107"
+  color_temperature_light:       "206, 74, 44"
+  color_humidity_dark:           "70, 214, 192"
+  color_humidity_light:          "12, 140, 120"
+  color_electricity_track_dark:  "60, 110, 150"
+  color_electricity_track_light: "196, 214, 230"
+  color_gas_track_dark:          "140, 95, 60"
+  color_gas_track_light:         "232, 208, 184"
+  color_sub_dial_track_dark:     "60, 75, 90"
+  color_sub_dial_track_light:    "200, 210, 222"
+  color_electricity_value_dark:  "157, 216, 251"
+  color_electricity_value_light: "2, 108, 168"
+  color_gas_value_dark:          "255, 195, 154"
+  color_gas_value_light:         "180, 92, 24"
+  color_seconds_dark:            "255, 95, 95"
+  color_seconds_light:           "205, 45, 45"
+
 esphome:
   name: round-dashboard
   friendly_name: Round Dashboard
@@ -386,7 +426,28 @@ display:
     # via set_rotation() in the apply_rotation script.
     update_interval: 1s
     lambda: |-
-      auto p = rd::make_palette(id(dark_mode));
+      // Theme palette from the color_* substitutions (dark/light pair per
+      // element), selected by the Dark Mode state. Colours live in YAML; the
+      // rd:: helpers only consume the resulting Palette.
+      bool dark = id(dark_mode);
+      rd::Palette p;
+      p.background        = dark ? Color(${color_background_dark})         : Color(${color_background_light});
+      p.text              = dark ? Color(${color_text_dark})              : Color(${color_text_light});
+      p.text_dimmed       = dark ? Color(${color_text_dimmed_dark})       : Color(${color_text_dimmed_light});
+      p.text_off          = dark ? Color(${color_text_off_dark})          : Color(${color_text_off_light});
+      p.bezel_major       = dark ? Color(${color_bezel_major_dark})       : Color(${color_bezel_major_light});
+      p.bezel_minor       = dark ? Color(${color_bezel_minor_dark})       : Color(${color_bezel_minor_light});
+      p.dial_well         = dark ? Color(${color_dial_well_dark})         : Color(${color_dial_well_light});
+      p.electricity       = dark ? Color(${color_electricity_dark})       : Color(${color_electricity_light});
+      p.gas               = dark ? Color(${color_gas_dark})               : Color(${color_gas_light});
+      p.temperature       = dark ? Color(${color_temperature_dark})       : Color(${color_temperature_light});
+      p.humidity          = dark ? Color(${color_humidity_dark})          : Color(${color_humidity_light});
+      p.electricity_track = dark ? Color(${color_electricity_track_dark}) : Color(${color_electricity_track_light});
+      p.gas_track         = dark ? Color(${color_gas_track_dark})         : Color(${color_gas_track_light});
+      p.sub_dial_track    = dark ? Color(${color_sub_dial_track_dark})    : Color(${color_sub_dial_track_light});
+      p.electricity_value = dark ? Color(${color_electricity_value_dark}) : Color(${color_electricity_value_light});
+      p.gas_value         = dark ? Color(${color_gas_value_dark})         : Color(${color_gas_value_light});
+      p.seconds           = dark ? Color(${color_seconds_dark})           : Color(${color_seconds_light});
       it.fill(p.background);
 
       auto now = id(ha_time).now();
@@ -404,7 +465,7 @@ display:
       // Main concentric gauges: Electricity (outer) + Gas (inner), HA-scaled.
       float elec = id(house_load).state;
       float gas = id(gas_usage).state;
-      rd::draw_ring_gauge(it, 96, 110, rd::scale_value(elec, id(elec_min).state, id(elec_max).state), p.elec, p.elec_track);
+      rd::draw_ring_gauge(it, 96, 110, rd::scale_value(elec, id(elec_min).state, id(elec_max).state), p.electricity, p.electricity_track);
       rd::draw_ring_gauge(it, 78, 92,  rd::scale_value(gas,  id(gas_min).state,  id(gas_max).state),  p.gas,  p.gas_track);
 
       // Electricity & Gas value strings (Gas inner/above, Electricity outer/below).
@@ -417,12 +478,12 @@ display:
       int lx, ly, ew, eh, gw, gh;
       it.get_text_bounds(0, 0, elec_s, id(font_val), TextAlign::TOP_LEFT, &lx, &ly, &ew, &eh);
       it.get_text_bounds(0, 0, gas_s, id(font_val), TextAlign::TOP_LEFT, &lx, &ly, &gw, &gh);
-      rd::draw_connector(it, 103.0f, p.elec, ew / 2.0f + 3.0f);
+      rd::draw_connector(it, 103.0f, p.electricity, ew / 2.0f + 3.0f);
       rd::draw_connector(it, 85.0f, p.gas, gw / 2.0f + 3.0f);
 
       // Values centered on each ring's mid-radius so text edges line up with the ring band.
       it.printf(120, 202, id(font_val), p.gas_value, TextAlign::CENTER, "%s", gas_s);
-      it.printf(120, 220, id(font_val), p.elec_value, TextAlign::CENTER, "%s", elec_s);
+      it.printf(120, 220, id(font_val), p.electricity_value, TextAlign::CENTER, "%s", elec_s);
 
       // Weather condition icon (top center) from HA weather.forecast_home.
       const char* wi = rd::weather_glyph(id(weather_condition).state);
@@ -432,7 +493,7 @@ display:
       static const char *const wd[] = {"Sun","Mon","Tue","Wed","Thu","Fri","Sat"};
       static const char *const mo[] = {"Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"};
       if (now.is_valid()) {
-        it.printf(120, 84, id(font_val), p.text_dim, TextAlign::CENTER,
+        it.printf(120, 84, id(font_val), p.text_dimmed, TextAlign::CENTER,
                   "%s, %d %s", wd[now.day_of_week - 1], now.day_of_month, mo[now.month - 1]);
         it.strftime(120, 108, id(font_time), p.text, TextAlign::CENTER, "%H:%M:%S", now);
       } else {
@@ -442,14 +503,14 @@ display:
       // Temperature (left) + Humidity (right) sub-dials below the time.
       float temp = id(outdoor_temp).state;
       it.filled_circle(90, 152, 25, p.dial_well);
-      rd::draw_sub_gauge(it, 90, 152, rd::scale_value(temp, id(temp_min).state, id(temp_max).state), p.temp, p.sub_track);
+      rd::draw_sub_gauge(it, 90, 152, rd::scale_value(temp, id(temp_min).state, id(temp_max).state), p.temperature, p.sub_dial_track);
       if (isnan(temp)) it.printf(90, 150, id(font_val), p.text, TextAlign::CENTER, "--");
       else             it.printf(90, 150, id(font_val), p.text, TextAlign::CENTER, "%.1f", temp);
-      it.printf(90, 166, id(font_label), p.temp, TextAlign::CENTER, "TEMP");
+      it.printf(90, 166, id(font_label), p.temperature, TextAlign::CENTER, "TEMP");
 
       float hum = id(outdoor_humidity).state;
       it.filled_circle(150, 152, 25, p.dial_well);
-      rd::draw_sub_gauge(it, 150, 152, rd::scale_value(hum, id(hum_min).state, id(hum_max).state), p.humidity, p.sub_track);
+      rd::draw_sub_gauge(it, 150, 152, rd::scale_value(hum, id(hum_min).state, id(hum_max).state), p.humidity, p.sub_dial_track);
       if (isnan(hum)) it.printf(150, 150, id(font_val), p.text, TextAlign::CENTER, "--");
       else            it.printf(150, 150, id(font_val), p.text, TextAlign::CENTER, "%.0f%%", hum);
       it.printf(150, 166, id(font_label), p.humidity, TextAlign::CENTER, "HUM");
