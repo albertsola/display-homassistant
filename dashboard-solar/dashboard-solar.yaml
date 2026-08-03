@@ -1,0 +1,392 @@
+substitutions:
+  # --- Home Assistant entities (see dashboard-solar/README.md) ---
+  pv_entity: sensor.powermon_totalsolar                              # solar production, W
+  load_entity: sensor.consum_total                                   # house usage, W
+  battery_soc_entity: sensor.byd_battery_box_premium_hv_state_of_charge  # %
+  battery_charge_entity: sensor.solarnet_power_battery_charge        # W, >= 0 (measured)
+  battery_discharge_entity: sensor.solarnet_power_battery_discharge  # W, >= 0 (measured)
+  grid_export_entity: sensor.solarnet_power_grid_export              # W, >= 0
+  grid_import_entity: sensor.solarnet_power_grid_import              # W, >= 0
+  tesla_soc_entity: sensor.kitt_battery                              # Tesla car battery %
+  weather_entity: weather.forecast_home                              # top icon (TBD)
+  presence_entity: binary_sensor.cam_entrada_moviment_3              # presence -> red ring
+  # power_max (shared full-scale for both rings) is a runtime number, see `number:`.
+
+esphome:
+  name: round-dashboard
+  friendly_name: Dashboard Solar
+  includes:
+    - dashboard_solar.h
+  on_boot:
+    # priority -100 runs after restores, so this wins over any stale value.
+    priority: -100
+    then:
+      - lambda: |-
+          id(dark_mode) = true;
+          id(screen_on) = true;
+          if (id(brightness_pct) <= 0.0f) id(brightness_pct) = 100.0f;
+      - script.execute: apply_backlight
+      - script.execute: apply_rotation
+
+esp32:
+  board: esp32-c3-devkitm-1
+  variant: esp32c3
+  flash_size: 4MB
+  framework:
+    type: arduino
+
+logger:
+
+api:
+  encryption:
+    # Per-device key — REGENERATE before flashing a real device (esphome-style base64).
+    key: "9Ztq2Lp5Rk8vNmrgyQMos6s6JiQL21VUN/8egP0xS9Y="
+
+ota:
+  - platform: esphome
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  # New device: set a stable IP (DHCP reservation) and add `use_address:` here once known.
+  ap:
+    ssid: Dashboard Solar Fallback Hotspot
+    password: "zbM8eexLsZ2C"
+
+captive_portal:
+
+time:
+  - platform: sntp
+    id: ha_time
+    timezone: Europe/London
+
+spi:
+  clk_pin: GPIO6
+  mosi_pin: GPIO7
+
+# No i2c / touchscreen: this is the no-touch "N" board variant.
+
+globals:
+  - id: dark_mode
+    type: bool
+    restore_value: true
+    initial_value: 'true'
+  - id: brightness_pct
+    type: float
+    restore_value: true
+    initial_value: '100.0'
+  - id: screen_on
+    type: bool
+    restore_value: true
+    initial_value: 'true'
+  - id: rotation_deg
+    type: int
+    restore_value: true
+    initial_value: '180'
+
+script:
+  - id: apply_backlight
+    then:
+      - output.set_level:
+          id: backlight_pwm
+          level: !lambda 'return id(screen_on) ? (id(brightness_pct) / 100.0f) : 0.0f;'
+
+  - id: apply_rotation
+    then:
+      - lambda: |-
+          switch ((int) id(rotation_deg)) {
+            case 0:   id(disp).set_rotation(display::DISPLAY_ROTATION_0_DEGREES); break;
+            case 90:  id(disp).set_rotation(display::DISPLAY_ROTATION_90_DEGREES); break;
+            case 270: id(disp).set_rotation(display::DISPLAY_ROTATION_270_DEGREES); break;
+            default:  id(disp).set_rotation(display::DISPLAY_ROTATION_180_DEGREES); break;
+          }
+      - lambda: 'id(disp).update();'
+
+switch:
+  - platform: template
+    name: "Dark Mode"
+    id: dark_switch
+    icon: "mdi:theme-light-dark"
+    lambda: 'return id(dark_mode);'
+    turn_on_action:
+      - lambda: 'id(dark_mode) = true;'
+    turn_off_action:
+      - lambda: 'id(dark_mode) = false;'
+
+  - platform: template
+    name: "Screen"
+    id: screen_power
+    icon: "mdi:monitor"
+    lambda: 'return id(screen_on);'
+    turn_on_action:
+      - lambda: 'id(screen_on) = true;'
+      - script.execute: apply_backlight
+    turn_off_action:
+      - lambda: 'id(screen_on) = false;'
+      - script.execute: apply_backlight
+
+select:
+  - platform: template
+    name: "Screen Rotation"
+    id: rotation_select
+    icon: "mdi:screen-rotation"
+    options: ["0", "90", "180", "270"]
+    lambda: 'return std::to_string((int) id(rotation_deg));'
+    set_action:
+      - lambda: 'id(rotation_deg) = atoi(x.c_str());'
+      - script.execute: apply_rotation
+
+number:
+  - platform: template
+    name: "Brightness"
+    id: screen_brightness
+    icon: "mdi:brightness-6"
+    unit_of_measurement: "%"
+    min_value: 0
+    max_value: 100
+    step: 5
+    mode: slider
+    lambda: 'return id(brightness_pct);'
+    set_action:
+      - lambda: 'id(brightness_pct) = x;'
+      - script.execute: apply_backlight
+
+  # Shared full-scale for the outer solar ring AND the inner flow ring, so the
+  # two always line up. Set >= expected peak PV and peak home load.
+  - platform: template
+    name: "Power full-scale"
+    id: power_max
+    optimistic: true
+    restore_value: true
+    initial_value: 8000
+    min_value: 1000
+    max_value: 20000
+    step: 500
+    unit_of_measurement: W
+    entity_category: config
+    mode: box
+
+output:
+  - platform: ledc
+    pin: GPIO3
+    id: backlight_pwm
+
+font:
+  - file:
+      type: gfonts
+      family: Share Tech Mono
+    id: font_time
+    size: 26
+  - file:
+      type: gfonts
+      family: Orbitron
+      weight: 500
+    id: font_val
+    size: 12
+  - file:
+      type: gfonts
+      family: Space Grotesk
+      weight: 500
+    id: font_label
+    size: 10
+  # Material Design Icons — the 15 HA weather condition glyphs (top-of-face icon).
+  - file: "https://github.com/Templarian/MaterialDesign-Webfont/raw/master/fonts/materialdesignicons-webfont.ttf"
+    id: font_weather
+    size: 29
+    glyphs:
+      - "\U000F0599"  # sunny
+      - "\U000F0594"  # clear-night
+      - "\U000F0595"  # partlycloudy
+      - "\U000F0590"  # cloudy
+      - "\U000F0591"  # fog
+      - "\U000F0592"  # hail
+      - "\U000F0593"  # lightning
+      - "\U000F067E"  # lightning-rainy
+      - "\U000F0596"  # pouring
+      - "\U000F0597"  # rainy
+      - "\U000F0598"  # snowy
+      - "\U000F067F"  # snowy-rainy
+      - "\U000F059D"  # windy
+      - "\U000F059E"  # windy-variant
+      - "\U000F0F2F"  # exceptional
+
+sensor:
+  - platform: homeassistant
+    id: pv_power
+    entity_id: ${pv_entity}
+    internal: true
+  - platform: homeassistant
+    id: load_power
+    entity_id: ${load_entity}
+    internal: true
+  - platform: homeassistant
+    id: batt_soc
+    entity_id: ${battery_soc_entity}
+    internal: true
+  - platform: homeassistant
+    id: batt_charge
+    entity_id: ${battery_charge_entity}
+    internal: true
+  - platform: homeassistant
+    id: batt_discharge
+    entity_id: ${battery_discharge_entity}
+    internal: true
+  - platform: homeassistant
+    id: tesla_soc
+    entity_id: ${tesla_soc_entity}
+    internal: true
+  - platform: homeassistant
+    id: grid_export
+    entity_id: ${grid_export_entity}
+    internal: true
+  - platform: homeassistant
+    id: grid_import
+    entity_id: ${grid_import_entity}
+    internal: true
+
+binary_sensor:
+  # Presence sensor: when detected, the outer ring turns solid red (as in round-dashboard).
+  - platform: homeassistant
+    id: presence_sensor
+    entity_id: ${presence_entity}
+    internal: true
+
+  # BOOT button (GPIO9) published to HA. GPIO9 is a strapping pin: a press while
+  # running is fine, but do NOT hold it at power-on (that enters flash mode).
+  - platform: gpio
+    name: "Boot Button"
+    id: boot_button
+    pin:
+      number: GPIO9
+      mode:
+        input: true
+        pullup: true
+      inverted: true
+    # Force a redraw on both edges so a short tap still flashes the green ring.
+    on_press:
+      - lambda: 'id(disp).update();'
+    on_release:
+      - lambda: 'id(disp).update();'
+
+text_sensor:
+  - platform: homeassistant
+    id: weather_condition
+    entity_id: ${weather_entity}
+    internal: true
+
+display:
+  - platform: mipi_spi
+    id: disp
+    model: GC9A01A
+    invert_colors: true
+    reset_pin: GPIO1
+    cs_pin: GPIO10
+    dc_pin: GPIO2
+    dimensions: 240x240
+    update_interval: 1s
+    lambda: |-
+      auto p = ds::make_palette(id(dark_mode));
+      it.fill(p.background);
+
+      // ---- read the five base sensors ----
+      float pmax = id(power_max).state;
+      if (isnan(pmax) || pmax < 100.0f) pmax = 8000.0f;
+      float pv  = ds::nz(id(pv_power).state);       // solar, W
+      float ld  = ds::nz(id(load_power).state);     // house usage, W
+      float imp = ds::nz(id(grid_import).state);    // grid import, W (>=0)
+      float exp = ds::nz(id(grid_export).state);    // grid export, W (>=0)
+      float soc = id(batt_soc).state;               // home battery %, may be NaN
+      float chg = ds::nz(id(batt_charge).state);    // battery charge, W (>=0, measured)
+      float dis = ds::nz(id(batt_discharge).state); // battery discharge, W (>=0, measured)
+      float batt = chg - dis;                        // net (+ charging / - discharging)
+
+      // ---- flow segments (all measured; blue is the solar remainder) ----
+      float purple  = exp;                 // solar -> grid   (export)  — outer ring
+      float darkred = imp;                 // grid  -> house  (import)
+      float green   = chg;                 // solar -> battery (charging)
+      float orange  = dis;                 // battery -> house (discharge)
+      float blue    = pv - purple - green; // solar -> house
+      if (blue < 0.0f) blue = 0.0f;
+
+      // ---- outer ring: presence (red) > BOOT pressed (green) > Swiss bezel/seconds ----
+      auto now = id(ha_time).now();
+      int sec = now.is_valid() ? now.second : -1;
+      bool presence = id(presence_sensor).state;
+      bool pressed  = id(boot_button).state;   // BOOT button held down right now
+      if (presence)     ds::draw_alert_ring(it, p.presence);
+      else if (pressed) ds::draw_alert_ring(it, p.press_ring);
+      else              ds::draw_bezel(it, p);
+
+      // ---- outer ring: solar GENERATION, split self-used (sun yellow) + exported (purple) ----
+      float self_gen = pv - exp; if (self_gen < 0.0f) self_gen = 0.0f;  // generated - exported
+      ds::Seg gen[2] = {
+        { self_gen, p.solar },    // sun yellow: generation kept on-site (house + battery)
+        { exp,      p.f_grid },   // purple: exported to the grid
+      };
+      ds::draw_stacked_ring(it, 96, 110, gen, 2, pmax, p.solar_track);
+
+      // ---- inner ring: CONSUMPTION flow, export excluded (it lives on the generation ring) ----
+      ds::Seg segs[4] = {
+        { blue,    p.f_house },      // solar -> house
+        { green,   p.f_batt },       // solar -> battery (charging)
+        { orange,  p.f_from_batt },  // battery -> house
+        { darkred, p.f_from_grid },  // grid -> house (import)
+      };
+      ds::draw_stacked_ring(it, 78, 92, segs, 4, pmax, p.inner_track);
+
+      // ---- ring value labels at the bottom, each with a connector arc (round-dashboard style) ----
+      char sbuf[24], hbuf[24];
+      ds::fmt_power(sbuf, sizeof(sbuf), pv);   // solar generation (outer ring)
+      ds::fmt_power(hbuf, sizeof(hbuf), ld);   // home usage       (inner ring)
+      int lx, ly, sw, sh, hw, hh;
+      it.get_text_bounds(0, 0, sbuf, id(font_val), TextAlign::TOP_LEFT, &lx, &ly, &sw, &sh);
+      it.get_text_bounds(0, 0, hbuf, id(font_val), TextAlign::TOP_LEFT, &lx, &ly, &hw, &hh);
+      ds::draw_connector(it, 103.0f, p.solar,   sw / 2.0f + 3.0f);   // outer ring -> solar label
+      ds::draw_connector(it, 85.0f,  p.f_house, hw / 2.0f + 3.0f);   // inner ring -> home label
+      it.printf(120, 202, id(font_val), p.f_house, TextAlign::CENTER, "%s", hbuf);  // home usage (inner)
+      it.printf(120, 220, id(font_val), p.solar,   TextAlign::CENTER, "%s", sbuf);  // solar (outer)
+
+      // ---- weather icon (top) ----
+      const char* wi = ds::weather_glyph(id(weather_condition).state);
+      if (wi != nullptr) it.printf(120, 57, id(font_weather), p.text, TextAlign::CENTER, "%s", wi);
+
+      // ---- centre: date over time (home usage now labels the inner ring, round-dashboard style) ----
+      static const char *const wd[] = {"Sun","Mon","Tue","Wed","Thu","Fri","Sat"};
+      static const char *const mo[] = {"Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"};
+      if (now.is_valid()) {
+        it.printf(120, 96, id(font_val), p.text_dim, TextAlign::CENTER,
+                  "%s, %d %s", wd[now.day_of_week - 1], now.day_of_month, mo[now.month - 1]);
+        it.strftime(120, 118, id(font_time), p.text, TextAlign::CENTER, "%H:%M:%S", now);
+      } else {
+        it.printf(120, 118, id(font_time), p.text_off, TextAlign::CENTER, "--:--:--");
+      }
+
+      // ---- left sub-dial: Battery SoC % (+ derived charge/discharge) ----
+      it.filled_circle(90, 152, 25, p.dial_well);
+      float socf = isnan(soc) ? 0.0f : ds::clamp01(soc / 100.0f);
+      ds::draw_sub_gauge(it, 90, 152, socf, p.battery, p.sub_track);
+      if (isnan(soc)) it.printf(90, 148, id(font_val), p.text, TextAlign::CENTER, "--");
+      else            it.printf(90, 148, id(font_val), p.text, TextAlign::CENTER, "%.0f%%", soc);
+      {
+        char bb[20];
+        if (fabsf(batt) < 20.0f) {
+          snprintf(bb, sizeof(bb), "idle");
+        } else {
+          char t[16]; ds::fmt_power(t, sizeof(t), fabsf(batt));
+          snprintf(bb, sizeof(bb), "%s%s", batt >= 0.0f ? "+" : "-", t);
+        }
+        it.printf(90, 164, id(font_label), batt >= 0.0f ? p.f_batt : p.f_from_batt,
+                  TextAlign::CENTER, "%s", bb);
+      }
+
+      // ---- right sub-dial: Tesla car battery % (grid import/export live on the rings) ----
+      it.filled_circle(150, 152, 25, p.dial_well);
+      float tsoc = id(tesla_soc).state;              // Tesla %, may be NaN
+      float tsocf = isnan(tsoc) ? 0.0f : ds::clamp01(tsoc / 100.0f);
+      ds::draw_sub_gauge(it, 150, 152, tsocf, p.f_house, p.sub_track);
+      if (isnan(tsoc)) it.printf(150, 148, id(font_val), p.text, TextAlign::CENTER, "--");
+      else             it.printf(150, 148, id(font_val), p.text, TextAlign::CENTER, "%.0f%%", tsoc);
+      it.printf(150, 164, id(font_label), p.f_house, TextAlign::CENTER, "TESLA");
+
+      // ---- seconds tick last (over everything), unless an alert ring is showing ----
+      if (!presence && !pressed && sec >= 0) ds::draw_seconds_tick(it, sec, p.seconds);
