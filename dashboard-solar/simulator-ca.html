@@ -8,7 +8,7 @@
   :root{
     color-scheme: dark;
     --bg:#0b1018; --panel:#111a28; --line:#1f2d42; --ink:#e8eefc; --dim:#93a6c2; --faint:#6f83a0;
-    --solar:#ffb300; --blue:#3896f8; --green:#4cc878; --purple:#b978eb; --orange:#ff963c; --red:#dc4646;
+    --solar:#ffd60a; --blue:#3896f8; --green:#4cc878; --purple:#b978eb; --orange:#cd5f19; --red:#dc4646;
     --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
     --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   }
@@ -69,16 +69,17 @@
       <div class="flows" id="flows"></div>
     </div>
     <div class="legend">
-      <span class="h">Exterior — generació</span>
-      <span class="sw" style="background:var(--solar)"></span>autoconsum (pv − exportació)<br>
-      <span class="sw" style="background:var(--purple)"></span>exportat
-      <span class="h">Interior — consum</span>
-      <span class="sw" style="background:var(--blue)"></span>solar → casa<br>
-      <span class="sw" style="background:var(--green)"></span>→ bateria (càrrega)<br>
+      <span class="h">Exterior — fonts</span>
+      <span class="sw" style="background:var(--solar)"></span>autoconsum solar (pv − exportació)<br>
       <span class="sw" style="background:var(--orange)"></span>bateria → casa<br>
-      <span class="sw" style="background:var(--red)"></span>xarxa → casa (importació)
-      <span class="h">Tercer — bateries</span>
-      🔋 casa&nbsp;&nbsp;·&nbsp;&nbsp;🚗 Tesla&nbsp;(SoC %)
+      <span class="sw" style="background:var(--red)"></span>importació de xarxa<br>
+      <span class="sw" style="background:#bec8d6"></span>exportat
+      <span class="h">Interior — consum</span>
+      <span class="sw" style="background:var(--blue)"></span>casa (− VE)<br>
+      <span class="sw" style="background:var(--green)"></span>càrrega bateria de casa<br>
+      <span class="sw" style="background:var(--purple)"></span>càrrega VE
+      <span class="h">Tercer — bateries (SoC)</span>
+      <span class="sw" style="background:var(--green)"></span>🔋 casa&nbsp;&nbsp;<span class="sw" style="background:var(--purple)"></span>🚗 VE
     </div>
   </div>
 
@@ -93,9 +94,9 @@
 const C=120;
 const P={ bg:'#060c15', text:'#eef4ff', text_dim:'#93a6c2',
   bezel_major:'rgb(150,175,205)', bezel_minor:'rgb(80,100,125)',
-  solar:'#ffb300', solar_track:'rgb(110,90,30)',
-  f_house:'#3896f8', f_batt:'#4cc878', f_grid:'#b978eb',
-  f_from_batt:'#ff963c', f_from_grid:'#dc4646',
+  solar:'#ffd60a', solar_track:'rgb(110,90,30)',
+  f_house:'#3896f8', f_batt:'#4cc878', f_grid:'#bec8d6', electric_vehicle:'#b978eb',
+  f_from_batt:'#cd5f19', f_from_grid:'#dc4646',
   inner_track:'rgb(45,55,70)', battery:'#4cc878', sub_track:'rgb(60,75,90)',
   value:'#dce7f6', seconds:'#ff5f5f' };
 const MONO='ui-monospace, Menlo, Consolas, monospace';
@@ -106,9 +107,9 @@ function flows(s){
   const charge=Math.max(0,s.batt), discharge=Math.max(0,-s.batt);
   const gridNet=(s.load+charge)-(s.pv+discharge);
   const imp=Math.max(0,gridNet), exp=Math.max(0,-gridNet);
-  let blue=s.pv-exp-charge; if(blue<0)blue=0;
-  return { imp, exp, charge, discharge, blue, green:charge, orange:discharge,
-           purple:exp, darkred:imp, self_gen:Math.max(0,s.pv-exp) };
+  const ev=Math.max(0,Math.min(s.ev,s.load));       // EV charge (subset of house load)
+  const house_ev=Math.max(0,s.load-ev);             // house minus EV
+  return { imp, exp, charge, discharge, ev, house_ev, self_gen:Math.max(0,s.pv-exp) };
 }
 function fillArc(ctx,rin,rout,a0,a1,color){
   ctx.beginPath(); ctx.arc(C,C,rout,rad(a0),rad(a1),false); ctx.arc(C,C,rin,rad(a1),rad(a0),true);
@@ -131,9 +132,11 @@ function paint(ctx,s,opt){
   ctx.fillStyle=P.bg; ctx.fillRect(0,0,240,240);
   const f=flows(s), pmax=s.powerMax;
   bezel(ctx);
-  stackedRing(ctx,96,110,[{w:f.self_gen,c:P.solar},{w:f.exp,c:P.f_grid}],pmax,P.solar_track);
-  stackedRing(ctx,78,92,[{w:f.blue,c:P.f_house},{w:f.green,c:P.f_batt},{w:f.orange,c:P.f_from_batt},{w:f.darkred,c:P.f_from_grid}],pmax,P.inner_track);
-  splitGauge(ctx,52,64,s.soc/100,s.tsoc/100,P.battery,P.f_house,P.sub_track);
+  // exterior = fonts: autoconsum solar, exportació, descàrrega bateria, importació
+  stackedRing(ctx,96,110,[{w:f.self_gen,c:P.solar},{w:f.discharge,c:P.f_from_batt},{w:f.imp,c:P.f_from_grid},{w:f.exp,c:P.f_grid}],pmax,P.solar_track);
+  // interior = consum: casa-VE, càrrega bateria de casa, càrrega VE
+  stackedRing(ctx,78,92,[{w:f.house_ev,c:P.f_house},{w:f.charge,c:P.f_batt},{w:f.ev,c:P.electric_vehicle}],pmax,P.inner_track);
+  splitGauge(ctx,52,64,s.soc/100,s.tsoc/100,P.battery,P.electric_vehicle,P.sub_track);
   ctx.textAlign='center'; ctx.textBaseline='middle';
   const sB=fmt(s.pv),hB=fmt(s.load); ctx.font='bold 14px '+MONO;
   connector(ctx,103,P.solar,ctx.measureText(sB).width/2+3); connector(ctx,85,P.f_house,ctx.measureText(hB).width/2+3);
@@ -154,10 +157,11 @@ function renderTo(cv,s,opt){ const ctx=cv.getContext('2d'); const k=cv.width/240
   ctx.setTransform(k,0,0,k,0,0); ctx.clearRect(0,0,240,240); paint(ctx,s,opt); }
 
 /* plafó en viu */
-const state={ pv:5000, load:800, batt:2000, soc:72, tsoc:80, powerMax:6000 };
-const defs=[ ['pv','Producció solar',0,8000,50],['load','Consum de la casa',0,8000,50],
+const state={ pv:5000, load:2600, batt:1200, ev:1800, soc:72, tsoc:80, powerMax:6000 };
+const defs=[ ['pv','Producció solar',0,8000,50],['load','Consum de la casa (inc. VE)',0,8000,50],
   ['batt','Bateria neta (+ càrrega / − descàrrega)',-6000,6000,50],
-  ['soc','SoC bateria de casa',0,100,1],['tsoc','SoC del Tesla',0,100,1],['powerMax','Escala de potència',2000,12000,500] ];
+  ['ev','Càrrega VE',0,7000,50],
+  ['soc','SoC bateria de casa',0,100,1],['tsoc','SoC del VE',0,100,1],['powerMax','Escala de potència',2000,12000,500] ];
 const cont=document.getElementById('controls');
 for(const [k,label,mn,mx,st] of defs){
   const l=document.createElement('div'); l.className='lab'; l.textContent=label;
@@ -170,34 +174,33 @@ for(const [k,label,mn,mx,st] of defs){
 const liveCv=document.getElementById('live'), flowsEl=document.getElementById('flows');
 function live(){ renderTo(liveCv,state,{live:true});
   const f=flows(state);
-  flowsEl.innerHTML=`derivat&nbsp; <b>exportació</b> ${fmt(f.exp)} · <b>importació</b> ${fmt(f.imp)} · <b>càrrega</b> ${fmt(f.charge)} · <b>descàrrega</b> ${fmt(f.discharge)}<br>`+
-   `exterior&nbsp; 🟡 ${fmt(f.self_gen)} + 🟣 ${fmt(f.exp)} = pv <b>${fmt(state.pv)}</b><br>`+
-   `interior&nbsp; 🔵 ${fmt(f.blue)} + 🟢 ${fmt(f.green)} + 🟠 ${fmt(f.orange)} + 🟥 ${fmt(f.darkred)} = consum <b>${fmt(state.load)}</b>`;
+  flowsEl.innerHTML=`fonts&nbsp;&nbsp; 🟡 autoconsum <b>${fmt(f.self_gen)}</b> · 🟠 bat→casa <b>${fmt(f.discharge)}</b> · 🟥 importació <b>${fmt(f.imp)}</b> · ⚪ exportació <b>${fmt(f.exp)}</b><br>`+
+   `consum&nbsp; 🔵 casa−VE <b>${fmt(f.house_ev)}</b> · 🟢 càrrega bat <b>${fmt(f.charge)}</b> · 🟣 VE <b>${fmt(f.ev)}</b>`;
 }
 
 /* casos documentats */
 const scenarios=[
-  { n:'Sobreproducció', c:"Migdia assolellat — el solar cobreix la casa, carrega la bateria i exporta l'excedent.",
-    s:{pv:5000,load:800,batt:2000,soc:72,tsoc:80,powerMax:6000} },
-  { n:'Infraproducció', c:"Vespre — poc sol; la casa funciona amb solar + descàrrega de bateria + importació de xarxa.",
-    s:{pv:500,load:2500,batt:-1500,soc:45,tsoc:60,powerMax:6000} },
-  { n:'Autosuficient', c:"El solar cobreix tot el consum amb una mica per carregar — sense xarxa en cap sentit.",
-    s:{pv:2200,load:1800,batt:400,soc:90,tsoc:100,powerMax:6000} },
+  { n:'Sobreproducció + VE', c:"Migdia assolellat — el solar alimenta la casa, carrega la bateria i el VE, i encara exporta.",
+    s:{pv:5000,load:2600,batt:1200,ev:1800,soc:72,tsoc:55,powerMax:6000} },
+  { n:'Infraproducció', c:"Vespre — poc sol; la casa funciona amb solar + descàrrega de bateria + importació de xarxa (VE aturat).",
+    s:{pv:500,load:2500,batt:-1500,ev:0,soc:45,tsoc:60,powerMax:6000} },
+  { n:'Autosuficient', c:"El solar cobreix tot el consum amb una mica per carregar la bateria — sense xarxa.",
+    s:{pv:2200,load:1800,batt:400,ev:0,soc:90,tsoc:100,powerMax:6000} },
   { n:'Nit', c:"Sense generació — la bateria es descarrega i la xarxa cobreix la resta.",
-    s:{pv:0,load:1200,batt:-800,soc:30,tsoc:55,powerMax:6000} },
+    s:{pv:0,load:1200,batt:-800,ev:0,soc:30,tsoc:55,powerMax:6000} },
 ];
 const cardsEl=document.getElementById('cards');
 for(const sc of scenarios){
   const f=flows(sc.s);
-  const parts=[]; if(f.self_gen>0)parts.push('🟡 autoconsum'); if(f.exp>0)parts.push('🟣 exportació');
-  if(f.blue>0)parts.push('🔵 →casa'); if(f.green>0)parts.push('🟢 càrrega');
-  if(f.orange>0)parts.push('🟠 bat→casa'); if(f.darkred>0)parts.push('🟥 importació');
+  const parts=[]; if(f.self_gen>0)parts.push('🟡 autoconsum');
+  if(f.discharge>0)parts.push('🟠 bat→casa'); if(f.imp>0)parts.push('🟥 importació'); if(f.exp>0)parts.push('⚪ exportació');
+  if(f.house_ev>0)parts.push('🔵 casa'); if(f.charge>0)parts.push('🟢 càrrega bat'); if(f.ev>0)parts.push('🟣 VE');
   const card=document.createElement('div'); card.className='card';
   card.innerHTML=`<h3>${sc.n}</h3><p class="cap">${sc.c}</p>`;
   const row=document.createElement('div'); row.className='row';
   const cv=document.createElement('canvas'); cv.width=300; cv.height=300; cv.style.width='150px'; cv.style.height='150px';
   const kv=document.createElement('div'); kv.className='kv';
-  kv.innerHTML=`pv <b>${fmt(sc.s.pv)}</b> · consum <b>${fmt(sc.s.load)}</b><br>`+
+  kv.innerHTML=`pv <b>${fmt(sc.s.pv)}</b> · consum <b>${fmt(sc.s.load)}</b> · VE <b>${fmt(sc.s.ev)}</b><br>`+
     `bateria ${sc.s.batt>=0?'càrrega':'descàrrega'} <b>${fmt(Math.abs(sc.s.batt))}</b><br>`+
     `xarxa ${f.imp>0?'importació <b>'+fmt(f.imp)+'</b>':(f.exp>0?'exportació <b>'+fmt(f.exp)+'</b>':'—')}<br>`+
     `🔋 <b>${sc.s.soc}%</b> · 🚗 <b>${sc.s.tsoc}%</b><div class="tags">${parts.join(' · ')}</div>`;

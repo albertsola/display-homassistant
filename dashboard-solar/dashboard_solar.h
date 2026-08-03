@@ -30,11 +30,11 @@ struct Palette {
   Color background, text, text_dim, text_off;
   Color bezel_major, bezel_minor, dial_well;
   Color solar, solar_track;                 // outer ring (solar magnitude)
-  Color f_house, f_batt, f_grid;            // solar-origin flow: blue / green / purple
+  Color f_house, f_batt, f_grid;            // blue / green / light-grey (export)
   Color f_from_batt, f_from_grid;           // deficit flow: orange / dark red
   Color inner_track;                        // inner ring idle
   Color battery, grid_imp, grid_exp, sub_track;  // sub-dials
-  Color value, seconds, press_ring, presence;
+  Color value, seconds, press_ring, presence, electric_vehicle;
 };
 
 inline Palette make_palette(bool dark) {
@@ -46,12 +46,12 @@ inline Palette make_palette(bool dark) {
   p.bezel_major  = dark ? Color(150, 175, 205) : Color(120, 140, 165);
   p.bezel_minor  = dark ? Color(80, 100, 125)  : Color(184, 198, 214);
   p.dial_well    = dark ? Color(8, 16, 29)     : Color(214, 224, 236);
-  p.solar        = dark ? Color(255, 179, 0)   : Color(210, 140, 0);   // amber
+  p.solar        = dark ? Color(255, 214, 10)  : Color(214, 150, 0);   // bright yellow
   p.solar_track  = dark ? Color(110, 90, 30)   : Color(230, 205, 150);
   p.f_house      = dark ? Color(56, 150, 248)  : Color(2, 110, 190);   // blue
   p.f_batt       = dark ? Color(76, 200, 120)  : Color(20, 150, 80);   // green
-  p.f_grid       = dark ? Color(185, 120, 235) : Color(130, 60, 180);  // purple
-  p.f_from_batt  = dark ? Color(255, 150, 60)  : Color(210, 110, 20);  // orange
+  p.f_grid       = dark ? Color(190, 200, 214) : Color(140, 150, 165);  // export = light grey
+  p.f_from_batt  = dark ? Color(205, 95, 25)   : Color(168, 78, 12);   // dark orange
   p.f_from_grid  = dark ? Color(220, 70, 70)   : Color(180, 30, 30);   // dark red
   p.inner_track  = dark ? Color(45, 55, 70)    : Color(200, 210, 222);
   p.battery      = dark ? Color(76, 200, 120)  : Color(20, 150, 80);
@@ -62,6 +62,7 @@ inline Palette make_palette(bool dark) {
   p.seconds      = dark ? Color(255, 95, 95)   : Color(205, 45, 45);
   p.press_ring   = dark ? Color(50, 200, 110)  : Color(30, 160, 80);   // BOOT-pressed ring (green)
   p.presence     = dark ? Color(235, 30, 30)   : Color(205, 40, 40);   // presence ring (red)
+  p.electric_vehicle        = dark ? Color(185, 120, 235) : Color(130, 60, 180);  // EV = purple (was export)
   return p;
 }
 
@@ -259,9 +260,9 @@ void draw_sub_gauge(It &it, int cx, int cy, float pct, Color active, Color track
   }
 }
 
-// Third ring, split BAT-left / KIT-right, both rising toward the top (ticked polygons):
+// Third ring, split BAT-left / EV-right, both rising toward the top (ticked polygons):
 //   battery arc 140deg..250deg (lower-left -> upper-left), fills from 140
-//   tesla   arc  40deg..-70deg (lower-right -> upper-right), fills from 40
+//   EV   arc  40deg..-70deg (lower-right -> upper-right), fills from 40
 // leaves a ~40deg gap at the top (weather icon) and a wide gap at the bottom (value labels).
 template<class It>
 void draw_split_gauge(It &it, int r_in, int r_out, float bat, float tes,
@@ -273,7 +274,7 @@ void draw_split_gauge(It &it, int r_in, int r_out, float bat, float tes,
     bool on = clamp01(bat) >= (i + 0.5f) / N;
     fill_arc(it, CENTER, CENTER, r_in, r_out, a - half, a + half, on ? bat_col : track);
   }
-  for (int i = 0; i < N; i++) {      // tesla: 40deg..-70deg, fills from 40 (lower-right up)
+  for (int i = 0; i < N; i++) {      // EV: 40deg..-70deg, fills from 40 (lower-right up)
     float a = 40.0f - span * (i + 0.5f) / N;
     bool on = clamp01(tes) >= (i + 0.5f) / N;
     fill_arc(it, CENTER, CENTER, r_in, r_out, a - half, a + half, on ? tes_col : track);

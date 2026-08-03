@@ -39,11 +39,9 @@ input is the **GPIO9 BOOT** press.
 allocated across house / battery / grid. This makes the flows fully determined by the four
 base readings (no ambiguous heuristic).
 
-**Corollary that anchors the UI:** the **generation ring** (outer) shows total PV split into
-🟡 self-used (`pv − export`) + 🟣 exported (`export`). The **consumption ring** (inner) shows
-where energy is used, **excluding export**; its solar part (🔵 solar→house + 🟢 solar→battery)
-equals the outer ring's yellow (self-used) segment. Export appears **only** on the generation
-ring. Both rings share one `power_max` scale, so the used-solar portions line up.
+**The two rings, at a glance:** the **outer ring = energy SOURCES** (where the house's power
+comes from) and the **inner ring = energy USAGE** (what it is spent on). Both share one
+`power_max` scale.
 
 ## Screen layout (round 240×240) — round-dashboard style  [SET, details DECIDE]
 
@@ -52,11 +50,11 @@ centre readout + on-top second tick) and reuses the `rd::` helpers + dark/light 
 
 ```
  ┌ bezel = 60 Swiss ticks; SECOND tick — ring GREEN (BOOT pressed) / RED (presence) ┐
- │  ┌ Generation ring (outer: 🟡 self-used + 🟣 export) ── Consumption (inner) ┐│
+ │  ┌ Sources ring (outer) ─────────────── Usage ring (inner) ┐              │
  │  │                     ☀  ← weather                                         ││
  │  │                 Sat, 3 Aug                                               ││
  │  │                 12:34         ← centre clock (HH:MM)                      ││
- │  │        🔋62%    third ring: BAT left / KIT right    🚗78%                 ││
+ │  │        🔋62%    third ring: BAT left / EV right    🚗78%                 ││
  │  │           0.94 kW  ← home usage (inner ring) + connector arc             ││
  │  │           1.82 kW  ← solar (outer ring) + connector arc ─────────────────┘│
  └──────────────────────────────────────────────────────────────────────────────┘
@@ -64,59 +62,45 @@ centre readout + on-top second tick) and reuses the `rd::` helpers + dark/light 
 
 | Element (geometry from round-dashboard) | dashboard-solar role |
 |---|---|
-| **Outer ring** (r96–110) | **Solar generation** — stacked: 🟡 sun-yellow (`pv − export`, self-used) + 🟣 purple (`export`); shared `power_max` scale. Bottom **value label** `pv` at y220 with a **connector arc** (r103) |
-| **Inner ring** (r78–92) | **Consumption flow** — stacked blue/green/orange/dark-red on the same scale, **export excluded**. Bottom **value label** = home usage `load` at y202 with a **connector arc** (r85) |
-| **Third ring** (r≈52–64) | **Batteries**, split & rising to the top: 🔋 home battery (left, fills lower-left→up) + 🚗 Tesla (right, fills lower-right→up, i.e. right→left). MDI **icon + `%`** on each side; ~40° top gap for the weather glyph, wide bottom gap for the labels. Replaces the two old sub-dials. |
+| **Outer ring** (r96–110) | **Energy sources** — stacked: 🟡 solar self-used (`pv − export`) + 🟠 battery→house (discharge) + 🟥 grid import + ⚪ export (last); shared `power_max` scale. Bottom **value label** `pv` at y220, **connector arc** (r103) |
+| **Inner ring** (r78–92) | **Energy usage** — stacked 🔵 house (− EV) + 🟢 home-battery charge + 🟣 EV charge. Bottom **value label** = house `load` at y202, **connector arc** (r85) |
+| **Third ring** (r≈52–64) | **Batteries**, split & rising to the top: 🔋 home battery (left, fills lower-left→up) + 🚗 EV (right, fills lower-right→up, i.e. right→left). MDI **icon + `%`** on each side; ~40° top gap for the weather glyph, wide bottom gap for the labels. Replaces the two old sub-dials. |
 | **Centre** (y96/y118) | **Date + `HH:MM`** clock (no seconds; home usage labels the inner ring) |
 | **Top glyph** (y57) | **Weather icon** (apt — solar tracks weather) |
 | **Bezel** | Swiss 60-tick ring with a seconds tick; whole ring goes **green** while the **BOOT button** is pressed, **red** on **presence** (matches round-dashboard) |
 
-## Rings — generation (outer) + consumption (inner)  [SET]
+## Rings — sources (outer) + usage (inner)  [SET]
 
 Two stacked rings on one shared `power_max` scale (arc length = actual watts).
 
-**Generation ring (outer)** — total solar `pv`, split by where it goes:
+**Outer ring — energy SOURCES** (where the house's power comes from):
 
 | Colour | Segment | Watts |
 |--------|---------|-------|
-| 🟡 **sun-yellow** | self-used generation (house + battery) | `pv − export` |
-| 🟣 **purple** | exported to the grid | `export` |
+| 🟡 **amber** | solar produced, self-used | `pv − export` |
+| 🟠 **dark orange** | battery → house (discharge) | `discharge` |
+| 🟥 **red** | grid import | `import` |
+| ⚪ **light grey** | exported to the grid (last) | `export` |
 
-Sum = `pv`.
+**Inner ring — energy USAGE** (what the power is spent on):
 
-**Consumption ring (inner)** — where energy is actually used/stored, **export excluded**:
+| Colour | Segment | Watts |
+|--------|---------|-------|
+| 🔵 **blue** | house consumption, excluding the EV | `load − ev_charge` |
+| 🟢 **green** | home battery charge | `charge` |
+| 🟣 **purple** | EV charge | `ev_charge` |
 
-| Colour | Flow | Present when |
-|--------|------|--------------|
-| 🔵 **blue** | solar → house | PV > 0 |
-| 🟢 **green** | solar → battery (charging) | **surplus** (PV ≥ load) |
-| 🟠 **orange** | battery → house | **deficit** (PV < load) |
-| 🟥 **dark red** | grid → house (import) | **deficit** |
-
-- The inner **blue + green** (self-used solar) equals the outer **yellow** segment, so the two
-  rings line up on the used-solar portion; export sits only on the outer ring.
-- **Surplus:** inner = blue + green ( = `pv − export`).
-- **Deficit:** inner = blue + orange + dark red ( = `load`); green = 0.
-- **Night (PV = 0):** inner = orange + dark red; outer ring empty.
-
-Exact dark/light hex for the colours live as `Palette` pairs — no hardcoded `Color()`.
-Precise shades **[DECIDE]**.
-
-### Segment math (watts, plotted on the shared `power_max` scale)  [SET]
-
-Every flow is now a **measured** sensor; nothing is derived. Export is drawn on the
-generation ring; the consumption segments exclude it.
+Every value is a **measured** sensor (charge, discharge, import, export, `ev_charge`), so
+nothing is derived. `power_max` is a shared full-scale (≥ expected peak) so neither ring
+overflows — a config `number:` like round-dashboard's gauge maxes.
 
 ```
-purple  = export;      dark_red = import;    // grid: export (outer ring) + import
-green   = charge;      orange   = discharge; // battery flows (both measured)
-blue    = pv - export - charge;              // solar -> house (remainder); clamp >= 0
-batt    = charge - discharge;                // net for the battery sub-dial (+chg / -dis)
-// draw order (inner): blue, green, orange, dark_red   (purple lives on the outer ring)
+// outer (sources)
+self_used = max(0, pv - export);   discharge;   import;   export
+// inner (usage)
+house_ev  = max(0, load - ev_charge);   charge;   ev_charge
 // each arc angle = watts / power_max * full_sweep
 ```
-`power_max` is a shared full-scale (≥ expected peak PV **and** peak load) so neither ring
-overflows — a config `number:` like round-dashboard's gauge maxes.
 
 ## Data — Home Assistant entities  [SET]
 
@@ -124,26 +108,27 @@ Pulled over the ESPHome API like `round-dashboard` (set in `substitutions:`).
 
 | Field | Entity | Notes |
 |-------|--------|-------|
-| Solar production `pv` | `sensor.powermon_totalsolar` | live W [SET] |
-| House usage `load` | `sensor.consum_total` | live W [SET] |
-| Home battery SoC (%) | `sensor.byd_battery_box_premium_hv_state_of_charge` | left sub-dial |
-| Battery charge (W) | `sensor.solarnet_power_battery_charge` | ≥ 0 → 🟢 green |
-| Battery discharge (W) | `sensor.solarnet_power_battery_discharge` | ≥ 0 → 🟠 orange |
-| Grid **export** (W) | `sensor.solarnet_power_grid_export` | ≥ 0 → 🟣 purple (generation ring) |
-| Grid **import** (W) | `sensor.solarnet_power_grid_import` | ≥ 0 → 🟥 dark red |
-| Tesla battery SoC (%) | `sensor.kitt_battery` | right sub-dial |
+| Solar production `pv` | `sensor.powermon_totalsolar` | live W; outer 🟡 (`pv−export`) + inner |
+| House usage `load` | `sensor.consum_total` | live W (incl. EV); inner 🔵 (`load−ev`) |
+| Home battery SoC (%) | `sensor.byd_battery_box_premium_hv_state_of_charge` | third ring, left |
+| Battery charge (W) | `sensor.solarnet_power_battery_charge` | inner 🟢 |
+| Battery discharge (W) | `sensor.solarnet_power_battery_discharge` | outer 🟠 (battery→house) |
+| Grid **export** (W) | `sensor.solarnet_power_grid_export` | outer ⚪ light grey |
+| Grid **import** (W) | `sensor.solarnet_power_grid_import` | outer 🟥 red |
+| EV charge (W) | `sensor.kitt_charger_power` | inner 🟣 (EV charge) |
+| EV battery SoC (%) | `sensor.kitt_battery` | third ring, right |
 | Presence | `binary_sensor.cam_entrada_moviment_3` | red outer ring |
-| Weather | `weather.forecast_home` [TBD] | top icon |
+| Weather (icon + temp + humidity) | `weather.ivallm3` | top: condition icon, `temperature`/`humidity` attrs |
 
 Notes:
 - **All flows are measured** — grid import/export and battery charge/discharge are each their
   own non-negative sensor, so no sign conventions and no derivation. Net battery power for the
   sub-dial = `charge − discharge`; `blue` (solar→house) = `pv − export − charge`.
-- **Two batteries on the sub-dials:** home battery SoC (left), Tesla car SoC (right). Grid
+- **Two batteries on the sub-dials:** home battery SoC (left), EV car SoC (right). Grid
   import/export are shown on the rings, so neither needs a sub-dial.
 - Optional/missing: **PV today (kWh)** for an outer-ring subtitle — not wired [TBD].
 
-Data source: **Home Assistant**; Fronius/SolarNet inverter + BYD home battery + Tesla.
+Data source: **Home Assistant**; Fronius/SolarNet inverter + BYD home battery + EV.
 
 ## Controls exposed to HA  [IMPLEMENTED]
 
@@ -174,12 +159,12 @@ make build                            # or: make run device=<ip>
   `draw_sub_gauge`, `arc_line`, `draw_connector`, `scale_value`, `weather_glyph`, `fmt_power`,
   `nz`). Kept separate from round-dashboard so the two tracks evolve independently.
 - **Ring primitives:** `draw_stacked_ring` (coloured segments, generation/consumption rings)
-  and `draw_split_gauge` (the third ring, split BAT-left / KIT-right rising to the top) — both
+  and `draw_split_gauge` (the third ring, split BAT-left / EV-right rising to the top) — both
   built on `fill_arc` polygon fills.
 - Lambda reads the measured sensors, builds the segments, and draws: bezel (or green
   BOOT-press / red presence ring) → outer generation ring → inner consumption ring → the two
   ring value labels + connector arcs → weather icon → centre `HH:MM` clock → split battery/
-  Tesla third ring (icon + % each side) → seconds tick. Thin lambda; geometry/theme in the header.
+  EV third ring (icon + % each side) → seconds tick. Thin lambda; geometry/theme in the header.
 
 **Status:** `make build` compiles clean (Flash ~60%). Not yet flashed to hardware; entity
 values and on-screen placement unverified against live HA.
@@ -192,4 +177,4 @@ values and on-screen placement unverified against live HA.
 
 *Resolved:* PV/load are live W; grid & battery are all measured non-negative sensors (no
 signs, no derivation); centre = clock; bezel = Swiss ticks, green on BOOT press, red on
-presence; entity IDs known (BYD + Fronius SolarNet + Tesla `kitt_battery`).
+presence; entity IDs known (BYD + Fronius SolarNet + EV `kitt_battery`).

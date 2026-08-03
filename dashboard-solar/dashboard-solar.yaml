@@ -7,7 +7,8 @@ substitutions:
   battery_discharge_entity: sensor.solarnet_power_battery_discharge  # W, >= 0 (measured)
   grid_export_entity: sensor.solarnet_power_grid_export              # W, >= 0
   grid_import_entity: sensor.solarnet_power_grid_import              # W, >= 0
-  tesla_soc_entity: sensor.kitt_battery                              # Tesla car battery %
+  electric_vehicle_soc_entity: sensor.kitt_battery                              # EV battery %
+  ev_charge_entity: sensor.kitt_charger_power                        # EV charging power, W
   weather_entity: weather.ivallm3                                    # icon + temp + humidity
   presence_entity: binary_sensor.cam_entrada_moviment_3              # presence -> red ring
   # power_max (shared full-scale for both rings) is a runtime number, see `number:`.
@@ -217,7 +218,7 @@ font:
       - "\U000F059E"  # windy-variant
       - "\U000F0F2F"  # exceptional
 
-  # Side icons for the split third ring (home battery + car/Tesla).
+  # Side icons for the split third ring (home battery + car/EV).
   - file: "https://github.com/Templarian/MaterialDesign-Webfont/raw/master/fonts/materialdesignicons-webfont.ttf"
     id: font_icon
     size: 22
@@ -247,8 +248,12 @@ sensor:
     entity_id: ${battery_discharge_entity}
     internal: true
   - platform: homeassistant
-    id: tesla_soc
-    entity_id: ${tesla_soc_entity}
+    id: electric_vehicle_soc
+    entity_id: ${electric_vehicle_soc_entity}
+    internal: true
+  - platform: homeassistant
+    id: ev_charge
+    entity_id: ${ev_charge_entity}
     internal: true
   - platform: homeassistant
     id: grid_export
@@ -325,13 +330,10 @@ display:
       float chg = ds::nz(id(batt_charge).state);    // battery charge, W (>=0, measured)
       float dis = ds::nz(id(batt_discharge).state); // battery discharge, W (>=0, measured)
 
-      // ---- flow segments (all measured; blue is the solar remainder) ----
-      float purple  = exp;                 // solar -> grid   (export)  — outer ring
-      float darkred = imp;                 // grid  -> house  (import)
-      float green   = chg;                 // solar -> battery (charging)
-      float orange  = dis;                 // battery -> house (discharge)
-      float blue    = pv - purple - green; // solar -> house
-      if (blue < 0.0f) blue = 0.0f;
+      float ev       = ds::nz(id(ev_charge).state); // EV charging power, W (measured)
+      // segments — outer ring = energy SOURCES, inner ring = energy USAGE (see README)
+      float self_gen = pv - exp; if (self_gen < 0.0f) self_gen = 0.0f;  // solar used on-site
+      float house_ev = ld - ev;  if (house_ev < 0.0f) house_ev = 0.0f;  // house load minus EV charge
 
       // ---- outer ring: presence (red) > BOOT pressed (green) > Swiss bezel/seconds ----
       auto now = id(ha_time).now();
@@ -342,22 +344,24 @@ display:
       else if (pressed) ds::draw_alert_ring(it, p.press_ring);
       else              ds::draw_bezel(it, p);
 
-      // ---- outer ring: solar GENERATION, split self-used (sun yellow) + exported (purple) ----
-      float self_gen = pv - exp; if (self_gen < 0.0f) self_gen = 0.0f;  // generated - exported
-      ds::Seg gen[2] = {
-        { self_gen, p.solar },    // sun yellow: generation kept on-site (house + battery)
-        { exp,      p.f_grid },   // purple: exported to the grid
+      // ---- outer ring = energy SOURCES: solar self-used + export + battery discharge + import ----
+      // amber = solar used on-site, grey = exported (last); together = full generation.
+      // The bottom value label shows the full solar generation (pv).
+      ds::Seg outer[4] = {
+        { self_gen, p.solar },        // solar used on-site (amber)
+        { dis,      p.f_from_batt },   // battery -> house (dark orange)
+        { imp,      p.f_from_grid },   // grid import (red)
+        { exp,      p.f_grid },        // exported solar (light grey) — last
       };
-      ds::draw_stacked_ring(it, 96, 110, gen, 2, pmax, p.solar_track, true);   // always segmented ticks
+      ds::draw_stacked_ring(it, 96, 110, outer, 4, pmax, p.solar_track, true);
 
-      // ---- inner ring: CONSUMPTION flow, export excluded (it lives on the generation ring) ----
-      ds::Seg segs[4] = {
-        { blue,    p.f_house },      // solar -> house
-        { green,   p.f_batt },       // solar -> battery (charging)
-        { orange,  p.f_from_batt },  // battery -> house
-        { darkred, p.f_from_grid },  // grid -> house (import)
+      // ---- inner ring = energy USAGE: house (minus EV) + home battery charge + EV charge ----
+      ds::Seg inner[3] = {
+        { house_ev, p.f_house },            // house − EV charge (blue)
+        { chg,      p.f_batt },             // home battery charge (green)
+        { ev,       p.electric_vehicle },   // EV charge (purple)
       };
-      ds::draw_stacked_ring(it, 78, 92, segs, 4, pmax, p.inner_track, true);   // always segmented ticks
+      ds::draw_stacked_ring(it, 78, 92, inner, 3, pmax, p.inner_track, true);
 
       // ---- ring value labels at the bottom, each with a connector arc (round-dashboard style) ----
       char sbuf[24], hbuf[24];
@@ -394,17 +398,17 @@ display:
         it.printf(120, 133, id(font_time), p.text_off, TextAlign::CENTER, "--:--");
       }
 
-      // ---- third ring: split home-battery (left) + Tesla (right), rising to the top ----
+      // ---- third ring: split home-battery (left) + EV (right), rising to the top ----
       float socf  = isnan(soc)  ? 0.0f : ds::clamp01(soc  / 100.0f);
-      float tsoc  = id(tesla_soc).state;             // Tesla %, may be NaN
+      float tsoc  = id(electric_vehicle_soc).state;             // EV %, may be NaN
       float tsocf = isnan(tsoc) ? 0.0f : ds::clamp01(tsoc / 100.0f);
-      ds::draw_split_gauge(it, 52, 64, socf, tsocf, p.battery, p.f_house, p.sub_track);
+      ds::draw_split_gauge(it, 52, 64, socf, tsocf, p.battery, p.electric_vehicle, p.sub_track);
 
-      // icon + % at the BOTTOM of each partial gauge: home battery (left), car/Tesla (right)
+      // icon + % at the BOTTOM of each partial gauge: home battery (left), car/EV (right)
       it.printf(95, 167, id(font_icon), p.battery, TextAlign::CENTER, "\U000F1901");
       if (isnan(soc)) it.printf(95, 182, id(font_label), p.text, TextAlign::CENTER, "--");
       else            it.printf(95, 182, id(font_label), p.text, TextAlign::CENTER, "%.0f%%", soc);
-      it.printf(145, 167, id(font_icon), p.f_house, TextAlign::CENTER, "\U000F010B");
+      it.printf(145, 167, id(font_icon), p.electric_vehicle, TextAlign::CENTER, "\U000F010B");
       if (isnan(tsoc)) it.printf(145, 182, id(font_label), p.text, TextAlign::CENTER, "--");
       else             it.printf(145, 182, id(font_label), p.text, TextAlign::CENTER, "%.0f%%", tsoc);
 
