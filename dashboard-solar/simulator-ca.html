@@ -139,11 +139,12 @@ function paint(ctx,s,opt){
   connector(ctx,103,P.solar,ctx.measureText(sB).width/2+3); connector(ctx,85,P.f_house,ctx.measureText(hB).width/2+3);
   ctx.fillStyle=P.f_house; ctx.fillText(hB,120,202); ctx.fillStyle=P.solar; ctx.fillText(sB,120,220);
   ctx.font='18px sans-serif'; ctx.fillText('☀',120,57);
+  ctx.font='14px '+MONO; ctx.fillStyle=P.text_dim; ctx.fillText('21°  55%',120,93);   // temperatura + humitat
   const now=new Date();
   ctx.font='11px sans-serif'; ctx.fillStyle=P.text_dim;
-  ctx.fillText(opt&&opt.date?opt.date:now.toLocaleDateString('ca',{weekday:'short',day:'numeric',month:'short'}),120,96);
+  ctx.fillText(opt&&opt.date?opt.date:now.toLocaleDateString('ca',{weekday:'short',day:'numeric',month:'short'}),120,111);
   ctx.font='22px '+MONO; ctx.fillStyle=P.text;
-  ctx.fillText(opt&&opt.time?opt.time:(String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0')),120,118);
+  ctx.fillText(opt&&opt.time?opt.time:(String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0')),120,133);
   if(opt&&opt.live) fillArc(ctx,103,118,now.getSeconds()*6-90-1.2,now.getSeconds()*6-90+1.2,P.seconds);
   ctx.font='20px sans-serif'; ctx.fillText('🔋',95,167); ctx.fillText('🚗',145,167);
   ctx.font='12px '+MONO; ctx.fillStyle=P.text;

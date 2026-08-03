@@ -8,7 +8,7 @@ substitutions:
   grid_export_entity: sensor.solarnet_power_grid_export              # W, >= 0
   grid_import_entity: sensor.solarnet_power_grid_import              # W, >= 0
   tesla_soc_entity: sensor.kitt_battery                              # Tesla car battery %
-  weather_entity: weather.forecast_home                              # top icon (TBD)
+  weather_entity: weather.ivallm3                                    # icon + temp + humidity
   presence_entity: binary_sensor.cam_entrada_moviment_3              # presence -> red ring
   # power_max (shared full-scale for both rings) is a runtime number, see `number:`.
 
@@ -258,6 +258,17 @@ sensor:
     id: grid_import
     entity_id: ${grid_import_entity}
     internal: true
+  # current temperature = the weather entity's `temperature` attribute
+  - platform: homeassistant
+    id: weather_temp
+    entity_id: ${weather_entity}
+    attribute: temperature
+    internal: true
+  - platform: homeassistant
+    id: weather_humidity
+    entity_id: ${weather_entity}
+    attribute: humidity
+    internal: true
 
 binary_sensor:
   # Presence sensor: when detected, the outer ring turns solid red (as in round-dashboard).
@@ -360,19 +371,27 @@ display:
       it.printf(120, 202, id(font_gauge), p.f_house, TextAlign::CENTER, "%s", hbuf);  // home usage (inner)
       it.printf(120, 220, id(font_gauge), p.solar,   TextAlign::CENTER, "%s", sbuf);  // solar (outer)
 
-      // ---- weather icon (top) ----
+      // ---- weather icon + current temperature (top) ----
       const char* wi = ds::weather_glyph(id(weather_condition).state);
       if (wi != nullptr) it.printf(120, 57, id(font_weather), p.text, TextAlign::CENTER, "%s", wi);
+      // temperature + humidity as ONE centred group under the weather icon
+      float wt = id(weather_temp).state, wh = id(weather_humidity).state;
+      char tb[12] = "", hb[12] = "", wbuf[28] = "";
+      if (!isnan(wt)) snprintf(tb, sizeof(tb), "%.0f°", wt);
+      if (!isnan(wh)) snprintf(hb, sizeof(hb), "%.0f%%", wh);
+      if (tb[0] && hb[0]) snprintf(wbuf, sizeof(wbuf), "%s  %s", tb, hb);
+      else                snprintf(wbuf, sizeof(wbuf), "%s%s", tb, hb);
+      if (wbuf[0]) it.printf(120, 93, id(font_gauge), p.text_dim, TextAlign::CENTER, "%s", wbuf);
 
       // ---- centre: date over time (home usage now labels the inner ring, round-dashboard style) ----
       static const char *const wd[] = {"Sun","Mon","Tue","Wed","Thu","Fri","Sat"};
       static const char *const mo[] = {"Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"};
       if (now.is_valid()) {
-        it.printf(120, 96, id(font_val), p.text_dim, TextAlign::CENTER,
+        it.printf(120, 111, id(font_val), p.text_dim, TextAlign::CENTER,
                   "%s, %d %s", wd[now.day_of_week - 1], now.day_of_month, mo[now.month - 1]);
-        it.strftime(120, 118, id(font_time), p.text, TextAlign::CENTER, "%H:%M", now);
+        it.strftime(120, 133, id(font_time), p.text, TextAlign::CENTER, "%H:%M", now);
       } else {
-        it.printf(120, 118, id(font_time), p.text_off, TextAlign::CENTER, "--:--");
+        it.printf(120, 133, id(font_time), p.text_off, TextAlign::CENTER, "--:--");
       }
 
       // ---- third ring: split home-battery (left) + Tesla (right), rising to the top ----
