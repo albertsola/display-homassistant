@@ -146,11 +146,15 @@ Notes:
 
 Data source: **Home Assistant**; Fronius/SolarNet inverter + BYD home battery + Tesla.
 
-## Controls exposed to HA  [DECIDE]
+## Controls exposed to HA  [IMPLEMENTED]
 
-Reuse round-dashboard's: **Dark Mode**, **Screen** on/off, **Brightness**, **Screen
-Rotation**, **Boot Button** binary sensor. New `number:` ranges: `pv_max`, `grid_max`
-(battery fixed 0–100%). Optional: BOOT cycles the centre headline `[DECIDE]`.
+- **Dark Mode**, **Screen** on/off, **Brightness**, **Screen Rotation** — reused from round-dashboard.
+- **Power full-scale** (`power_max`, number) — the shared ring scale (batteries are 0–100%).
+- **Boot Button** (binary sensor) — published to HA; a press also flashes the green ring.
+
+Gauges always use the **segmented tick** style (rendered with filled polygons, no gaps). The
+solid-fill path still exists in `dashboard_solar.h` (the `ticked` arg) but isn't exposed — the
+lambda passes `true` everywhere, so re-enabling it later is a one-line change.
 
 ## Firmware structure  [IMPLEMENTED]
 

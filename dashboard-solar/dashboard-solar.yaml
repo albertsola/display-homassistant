@@ -323,7 +323,7 @@ display:
         { self_gen, p.solar },    // sun yellow: generation kept on-site (house + battery)
         { exp,      p.f_grid },   // purple: exported to the grid
       };
-      ds::draw_stacked_ring(it, 96, 110, gen, 2, pmax, p.solar_track);
+      ds::draw_stacked_ring(it, 96, 110, gen, 2, pmax, p.solar_track, true);   // always segmented ticks
 
       // ---- inner ring: CONSUMPTION flow, export excluded (it lives on the generation ring) ----
       ds::Seg segs[4] = {
@@ -332,7 +332,7 @@ display:
         { orange,  p.f_from_batt },  // battery -> house
         { darkred, p.f_from_grid },  // grid -> house (import)
       };
-      ds::draw_stacked_ring(it, 78, 92, segs, 4, pmax, p.inner_track);
+      ds::draw_stacked_ring(it, 78, 92, segs, 4, pmax, p.inner_track, true);   // always segmented ticks
 
       // ---- ring value labels at the bottom, each with a connector arc (round-dashboard style) ----
       char sbuf[24], hbuf[24];
@@ -364,7 +364,7 @@ display:
       // ---- left sub-dial: Battery SoC % (+ derived charge/discharge) ----
       it.filled_circle(90, 152, 25, p.dial_well);
       float socf = isnan(soc) ? 0.0f : ds::clamp01(soc / 100.0f);
-      ds::draw_sub_gauge(it, 90, 152, socf, p.battery, p.sub_track);
+      ds::draw_sub_gauge(it, 90, 152, socf, p.battery, p.sub_track, true);   // always segmented ticks
       if (isnan(soc)) it.printf(90, 148, id(font_val), p.text, TextAlign::CENTER, "--");
       else            it.printf(90, 148, id(font_val), p.text, TextAlign::CENTER, "%.0f%%", soc);
       {
@@ -383,7 +383,7 @@ display:
       it.filled_circle(150, 152, 25, p.dial_well);
       float tsoc = id(tesla_soc).state;              // Tesla %, may be NaN
       float tsocf = isnan(tsoc) ? 0.0f : ds::clamp01(tsoc / 100.0f);
-      ds::draw_sub_gauge(it, 150, 152, tsocf, p.f_house, p.sub_track);
+      ds::draw_sub_gauge(it, 150, 152, tsocf, p.f_house, p.sub_track, true);   // always segmented ticks
       if (isnan(tsoc)) it.printf(150, 148, id(font_val), p.text, TextAlign::CENTER, "--");
       else             it.printf(150, 148, id(font_val), p.text, TextAlign::CENTER, "%.0f%%", tsoc);
       it.printf(150, 164, id(font_label), p.f_house, TextAlign::CENTER, "TESLA");

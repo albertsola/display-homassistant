@@ -155,14 +155,20 @@ void draw_seconds_tick(It &it, int second, Color color) {
   fill_arc(it, CENTER, CENTER, 103, 118, a - 1.2f, a + 1.2f, color);
 }
 
-// Main concentric gauge (single solid fill): idle track over the whole sweep, active fill
-// on top from the start. Sweep -220deg..40deg (bottom gap). Used for a single-value ring.
+// Concentric single-value gauge. Sweep -220deg..40deg (bottom gap).
+// ticked=false -> one solid band; ticked=true -> discrete 4deg blocks (each a filled
+// polygon, NOT lines, so no black-pixel gaps). Idle portion uses the track colour.
 template<class It>
-void draw_ring_gauge(It &it, int inner, int outer, float pct, Color active, Color track) {
+void draw_ring_gauge(It &it, int inner, int outer, float pct, Color active, Color track, bool ticked) {
   float start = -220.0f, end = 40.0f;
-  fill_arc(it, CENTER, CENTER, inner, outer, start, end, track);
   float limit = start + (end - start) * clamp01(pct);
-  if (limit > start + 0.5f) fill_arc(it, CENTER, CENTER, inner, outer, start, limit, active);
+  if (!ticked) {
+    fill_arc(it, CENTER, CENTER, inner, outer, start, end, track);
+    if (limit > start + 0.5f) fill_arc(it, CENTER, CENTER, inner, outer, start, limit, active);
+  } else {
+    for (float a = start; a <= end + 1e-3f; a += 4.0f)
+      fill_arc(it, CENTER, CENTER, inner, outer, a - 1.2f, a + 1.2f, a <= limit ? active : track);
+  }
 }
 
 // Thin 1px arc (polyline) at a given radius across [start,end] degrees, about CENTER.
@@ -193,34 +199,64 @@ void draw_connector(It &it, float radius, Color color, float half_gap_px) {
 // filled solid (no gaps). Because the solar segments sum to PV they overlay the outer arc.
 struct Seg { float watts; Color color; };
 
-template<class It>
-void draw_stacked_ring(It &it, int inner, int outer, const Seg *segs, int n,
-                       float power_max, Color track) {
-  if (power_max <= 0.0f) power_max = 1.0f;
-  float start = -220.0f, end = 40.0f, sweep = end - start;
-  fill_arc(it, CENTER, CENTER, inner, outer, start, end, track);   // idle remainder
+// which segment covers cumulative-watts `w` (track colour if past the total)
+inline Color seg_color_at(const Seg *segs, int n, float w, Color track) {
   float cum = 0.0f;
   for (int i = 0; i < n; i++) {
-    float w = segs[i].watts;
-    if (w > 0.0f) {
-      float a0 = start + (cum / power_max) * sweep;
-      float a1 = start + ((cum + w) / power_max) * sweep;
-      if (a1 > end) a1 = end;
-      if (a0 < end) fill_arc(it, CENTER, CENTER, inner, outer, a0, a1, segs[i].color);
+    if (segs[i].watts <= 0.0f) continue;
+    if (w >= cum && w < cum + segs[i].watts) return segs[i].color;
+    cum += segs[i].watts;
+  }
+  return track;
+}
+
+template<class It>
+void draw_stacked_ring(It &it, int inner, int outer, const Seg *segs, int n,
+                       float power_max, Color track, bool ticked) {
+  if (power_max <= 0.0f) power_max = 1.0f;
+  float start = -220.0f, end = 40.0f, sweep = end - start;
+  if (!ticked) {
+    fill_arc(it, CENTER, CENTER, inner, outer, start, end, track);   // idle remainder
+    float cum = 0.0f;
+    for (int i = 0; i < n; i++) {
+      float w = segs[i].watts;
+      if (w > 0.0f) {
+        float a0 = start + (cum / power_max) * sweep;
+        float a1 = start + ((cum + w) / power_max) * sweep;
+        if (a1 > end) a1 = end;
+        if (a0 < end) fill_arc(it, CENTER, CENTER, inner, outer, a0, a1, segs[i].color);
+      }
+      cum += w;
+      if (start + (cum / power_max) * sweep >= end) break;   // ring full
     }
-    cum += w;
-    if (start + (cum / power_max) * sweep >= end) break;   // ring full
+  } else {
+    // discrete 4deg blocks, coloured by the segment at each block (filled polygons)
+    for (float a = start; a <= end + 1e-3f; a += 4.0f) {
+      float w = (a - start) / sweep * power_max;
+      fill_arc(it, CENTER, CENTER, inner, outer, a - 1.2f, a + 1.2f,
+               seg_color_at(segs, n, w, track));
+    }
   }
 }
 
-// Small sub-dial gauge: solid active arc over an idle track. Sweep 150deg..390deg (240deg).
+// Small sub-dial gauge. Sweep 150deg..390deg (240deg). ticked=false -> solid arc;
+// ticked=true -> 16 discrete blocks (filled polygons). Idle portion uses the track colour.
 template<class It>
-void draw_sub_gauge(It &it, int cx, int cy, float pct, Color active, Color track) {
+void draw_sub_gauge(It &it, int cx, int cy, float pct, Color active, Color track, bool ticked) {
   const int inner = 16, outer = 22;
   float start = 150.0f, sweep = 240.0f;
-  fill_arc(it, cx, cy, inner, outer, start, start + sweep, track);
-  float lim = sweep * clamp01(pct);
-  if (lim > 0.5f) fill_arc(it, cx, cy, inner, outer, start, start + lim, active);
+  if (!ticked) {
+    fill_arc(it, cx, cy, inner, outer, start, start + sweep, track);
+    float lim = sweep * clamp01(pct);
+    if (lim > 0.5f) fill_arc(it, cx, cy, inner, outer, start, start + lim, active);
+  } else {
+    const int N = 16;
+    for (int i = 0; i < N; i++) {
+      float a = start + sweep * i / (N - 1);
+      bool on = pct >= (i + 0.5f) / N;
+      fill_arc(it, cx, cy, inner, outer, a - 2.5f, a + 2.5f, on ? active : track);
+    }
+  }
 }
 
 }  // namespace ds
