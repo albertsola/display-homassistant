@@ -183,12 +183,19 @@ font:
       weight: 500
     id: font_val
     size: 12
+  # +2px variant for the two main-ring value labels (solar / consumption).
+  - file:
+      type: gfonts
+      family: Orbitron
+      weight: 500
+    id: font_gauge
+    size: 14
   - file:
       type: gfonts
       family: Space Grotesk
       weight: 500
     id: font_label
-    size: 10
+    size: 12
   # Material Design Icons — the 15 HA weather condition glyphs (top-of-face icon).
   - file: "https://github.com/Templarian/MaterialDesign-Webfont/raw/master/fonts/materialdesignicons-webfont.ttf"
     id: font_weather
@@ -209,6 +216,14 @@ font:
       - "\U000F059D"  # windy
       - "\U000F059E"  # windy-variant
       - "\U000F0F2F"  # exceptional
+
+  # Side icons for the split third ring (home battery + car/Tesla).
+  - file: "https://github.com/Templarian/MaterialDesign-Webfont/raw/master/fonts/materialdesignicons-webfont.ttf"
+    id: font_icon
+    size: 22
+    glyphs:
+      - "\U000F1901"  # home-battery
+      - "\U000F010B"  # car
 
 sensor:
   - platform: homeassistant
@@ -298,7 +313,6 @@ display:
       float soc = id(batt_soc).state;               // home battery %, may be NaN
       float chg = ds::nz(id(batt_charge).state);    // battery charge, W (>=0, measured)
       float dis = ds::nz(id(batt_discharge).state); // battery discharge, W (>=0, measured)
-      float batt = chg - dis;                        // net (+ charging / - discharging)
 
       // ---- flow segments (all measured; blue is the solar remainder) ----
       float purple  = exp;                 // solar -> grid   (export)  — outer ring
@@ -339,12 +353,12 @@ display:
       ds::fmt_power(sbuf, sizeof(sbuf), pv);   // solar generation (outer ring)
       ds::fmt_power(hbuf, sizeof(hbuf), ld);   // home usage       (inner ring)
       int lx, ly, sw, sh, hw, hh;
-      it.get_text_bounds(0, 0, sbuf, id(font_val), TextAlign::TOP_LEFT, &lx, &ly, &sw, &sh);
-      it.get_text_bounds(0, 0, hbuf, id(font_val), TextAlign::TOP_LEFT, &lx, &ly, &hw, &hh);
+      it.get_text_bounds(0, 0, sbuf, id(font_gauge), TextAlign::TOP_LEFT, &lx, &ly, &sw, &sh);
+      it.get_text_bounds(0, 0, hbuf, id(font_gauge), TextAlign::TOP_LEFT, &lx, &ly, &hw, &hh);
       ds::draw_connector(it, 103.0f, p.solar,   sw / 2.0f + 3.0f);   // outer ring -> solar label
       ds::draw_connector(it, 85.0f,  p.f_house, hw / 2.0f + 3.0f);   // inner ring -> home label
-      it.printf(120, 202, id(font_val), p.f_house, TextAlign::CENTER, "%s", hbuf);  // home usage (inner)
-      it.printf(120, 220, id(font_val), p.solar,   TextAlign::CENTER, "%s", sbuf);  // solar (outer)
+      it.printf(120, 202, id(font_gauge), p.f_house, TextAlign::CENTER, "%s", hbuf);  // home usage (inner)
+      it.printf(120, 220, id(font_gauge), p.solar,   TextAlign::CENTER, "%s", sbuf);  // solar (outer)
 
       // ---- weather icon (top) ----
       const char* wi = ds::weather_glyph(id(weather_condition).state);
@@ -356,37 +370,24 @@ display:
       if (now.is_valid()) {
         it.printf(120, 96, id(font_val), p.text_dim, TextAlign::CENTER,
                   "%s, %d %s", wd[now.day_of_week - 1], now.day_of_month, mo[now.month - 1]);
-        it.strftime(120, 118, id(font_time), p.text, TextAlign::CENTER, "%H:%M:%S", now);
+        it.strftime(120, 118, id(font_time), p.text, TextAlign::CENTER, "%H:%M", now);
       } else {
-        it.printf(120, 118, id(font_time), p.text_off, TextAlign::CENTER, "--:--:--");
+        it.printf(120, 118, id(font_time), p.text_off, TextAlign::CENTER, "--:--");
       }
 
-      // ---- left sub-dial: Battery SoC % (+ derived charge/discharge) ----
-      it.filled_circle(90, 152, 25, p.dial_well);
-      float socf = isnan(soc) ? 0.0f : ds::clamp01(soc / 100.0f);
-      ds::draw_sub_gauge(it, 90, 152, socf, p.battery, p.sub_track, true);   // always segmented ticks
-      if (isnan(soc)) it.printf(90, 148, id(font_val), p.text, TextAlign::CENTER, "--");
-      else            it.printf(90, 148, id(font_val), p.text, TextAlign::CENTER, "%.0f%%", soc);
-      {
-        char bb[20];
-        if (fabsf(batt) < 20.0f) {
-          snprintf(bb, sizeof(bb), "idle");
-        } else {
-          char t[16]; ds::fmt_power(t, sizeof(t), fabsf(batt));
-          snprintf(bb, sizeof(bb), "%s%s", batt >= 0.0f ? "+" : "-", t);
-        }
-        it.printf(90, 164, id(font_label), batt >= 0.0f ? p.f_batt : p.f_from_batt,
-                  TextAlign::CENTER, "%s", bb);
-      }
-
-      // ---- right sub-dial: Tesla car battery % (grid import/export live on the rings) ----
-      it.filled_circle(150, 152, 25, p.dial_well);
-      float tsoc = id(tesla_soc).state;              // Tesla %, may be NaN
+      // ---- third ring: split home-battery (left) + Tesla (right), rising to the top ----
+      float socf  = isnan(soc)  ? 0.0f : ds::clamp01(soc  / 100.0f);
+      float tsoc  = id(tesla_soc).state;             // Tesla %, may be NaN
       float tsocf = isnan(tsoc) ? 0.0f : ds::clamp01(tsoc / 100.0f);
-      ds::draw_sub_gauge(it, 150, 152, tsocf, p.f_house, p.sub_track, true);   // always segmented ticks
-      if (isnan(tsoc)) it.printf(150, 148, id(font_val), p.text, TextAlign::CENTER, "--");
-      else             it.printf(150, 148, id(font_val), p.text, TextAlign::CENTER, "%.0f%%", tsoc);
-      it.printf(150, 164, id(font_label), p.f_house, TextAlign::CENTER, "TESLA");
+      ds::draw_split_gauge(it, 52, 64, socf, tsocf, p.battery, p.f_house, p.sub_track);
+
+      // icon + % at the BOTTOM of each partial gauge: home battery (left), car/Tesla (right)
+      it.printf(95, 167, id(font_icon), p.battery, TextAlign::CENTER, "\U000F1901");
+      if (isnan(soc)) it.printf(95, 182, id(font_label), p.text, TextAlign::CENTER, "--");
+      else            it.printf(95, 182, id(font_label), p.text, TextAlign::CENTER, "%.0f%%", soc);
+      it.printf(145, 167, id(font_icon), p.f_house, TextAlign::CENTER, "\U000F010B");
+      if (isnan(tsoc)) it.printf(145, 182, id(font_label), p.text, TextAlign::CENTER, "--");
+      else             it.printf(145, 182, id(font_label), p.text, TextAlign::CENTER, "%.0f%%", tsoc);
 
       // ---- seconds tick last (over everything), unless an alert ring is showing ----
       if (!presence && !pressed && sec >= 0) ds::draw_seconds_tick(it, sec, p.seconds);

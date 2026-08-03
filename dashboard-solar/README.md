@@ -55,8 +55,8 @@ centre readout + on-top second tick) and reuses the `rd::` helpers + dark/light 
  │  ┌ Generation ring (outer: 🟡 self-used + 🟣 export) ── Consumption (inner) ┐│
  │  │                     ☀  ← weather                                         ││
  │  │                 Sat, 3 Aug                                               ││
- │  │                 12:34:56      ← centre clock                             ││
- │  │              (🔋 62%)   (🚗 78%)   ← sub-dials (home batt / Tesla)        ││
+ │  │                 12:34         ← centre clock (HH:MM)                      ││
+ │  │        🔋62%    third ring: BAT left / KIT right    🚗78%                 ││
  │  │           0.94 kW  ← home usage (inner ring) + connector arc             ││
  │  │           1.82 kW  ← solar (outer ring) + connector arc ─────────────────┘│
  └──────────────────────────────────────────────────────────────────────────────┘
@@ -66,9 +66,8 @@ centre readout + on-top second tick) and reuses the `rd::` helpers + dark/light 
 |---|---|
 | **Outer ring** (r96–110) | **Solar generation** — stacked: 🟡 sun-yellow (`pv − export`, self-used) + 🟣 purple (`export`); shared `power_max` scale. Bottom **value label** `pv` at y220 with a **connector arc** (r103) |
 | **Inner ring** (r78–92) | **Consumption flow** — stacked blue/green/orange/dark-red on the same scale, **export excluded**. Bottom **value label** = home usage `load` at y202 with a **connector arc** (r85) |
-| **Left sub-dial** (90,152) | **Home battery** — fill = SoC %, big `62%`, small signed `±kW` (green charge / orange discharge) |
-| **Right sub-dial** (150,152) | **Tesla battery** — fill = SoC %, big `78%`, label `TESLA` (`sensor.kitt_battery`) |
-| **Centre** (y96/y118) | **Date + time** clock (home usage now labels the inner ring) |
+| **Third ring** (r≈52–64) | **Batteries**, split & rising to the top: 🔋 home battery (left, fills lower-left→up) + 🚗 Tesla (right, fills lower-right→up, i.e. right→left). MDI **icon + `%`** on each side; ~40° top gap for the weather glyph, wide bottom gap for the labels. Replaces the two old sub-dials. |
+| **Centre** (y96/y118) | **Date + `HH:MM`** clock (no seconds; home usage labels the inner ring) |
 | **Top glyph** (y57) | **Weather icon** (apt — solar tracks weather) |
 | **Bezel** | Swiss 60-tick ring with a seconds tick; whole ring goes **green** while the **BOOT button** is pressed, **red** on **presence** (matches round-dashboard) |
 
@@ -171,18 +170,19 @@ make build                            # or: make run device=<ip>
   this folder's `secrets.yaml`).
 - **`dashboard_solar.h`** — self-contained `ds::` helper header (own `Palette` +
   `make_palette`, and copies of the primitives it needs: `draw_bezel`, `draw_alert_ring`,
-  `draw_seconds_tick`, `draw_ring_gauge`, `draw_sub_gauge`, `arc_line`, `draw_connector`,
-  `scale_value`, `weather_glyph`, `fmt_power`, `nz`). Kept separate from round-dashboard so the
-  two tracks evolve independently.
-- **New primitive:** `draw_stacked_ring(it, r_in, r_out, segs[], n, power_max, track)` —
-  same sweep/scale as `draw_ring_gauge`, coloured per segment.
+  `draw_seconds_tick`, `draw_ring_gauge`, `draw_stacked_ring`, `draw_split_gauge`,
+  `draw_sub_gauge`, `arc_line`, `draw_connector`, `scale_value`, `weather_glyph`, `fmt_power`,
+  `nz`). Kept separate from round-dashboard so the two tracks evolve independently.
+- **Ring primitives:** `draw_stacked_ring` (coloured segments, generation/consumption rings)
+  and `draw_split_gauge` (the third ring, split BAT-left / KIT-right rising to the top) — both
+  built on `fill_arc` polygon fills.
 - Lambda reads the measured sensors, builds the segments, and draws: bezel (or green
   BOOT-press / red presence ring) → outer generation ring → inner consumption ring → the two
-  ring value labels + connector arcs → weather icon → centre clock → home/Tesla battery
-  sub-dials → seconds tick. Thin lambda; geometry/theme in the header.
+  ring value labels + connector arcs → weather icon → centre `HH:MM` clock → split battery/
+  Tesla third ring (icon + % each side) → seconds tick. Thin lambda; geometry/theme in the header.
 
-**Status:** `make build` compiles clean (RAM 34%, Flash 59%). Not yet flashed to hardware;
-entity values unverified against live HA.
+**Status:** `make build` compiles clean (Flash ~60%). Not yet flashed to hardware; entity
+values and on-screen placement unverified against live HA.
 
 ## Open questions
 

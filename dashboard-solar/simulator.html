@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dashboard Solar — display simulator</title>
+<style>
+  :root{
+    color-scheme: dark;
+    --bg:#0b1018; --panel:#111a28; --line:#1f2d42; --ink:#e8eefc; --dim:#93a6c2; --faint:#6f83a0;
+    --solar:#ffb300; --blue:#3896f8; --green:#4cc878; --purple:#b978eb; --orange:#ff963c; --red:#dc4646;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:var(--bg); color:var(--ink); font-family:var(--sans); line-height:1.5; }
+  .wrap{ max-width:1100px; margin:0 auto; padding:28px 22px 56px; }
+  .langbar{ font-size:12px; color:var(--faint); margin-bottom:14px; letter-spacing:.04em; }
+  .langbar a{ color:var(--dim); text-decoration:none; } .langbar a:hover{ color:var(--ink); }
+  .langbar strong{ color:var(--ink); }
+  header h1{ font-size:22px; margin:0 0 6px; letter-spacing:-.01em; text-wrap:balance; }
+  header p{ color:var(--dim); margin:0; font-size:13.5px; max-width:70ch; }
+  code{ font-family:var(--mono); font-size:.86em; background:#0a1220; border:1px solid var(--line);
+        padding:1px 5px; border-radius:5px; color:#cfe0f5; }
+  .eyebrow{ text-transform:uppercase; letter-spacing:.14em; font-size:11px; color:var(--faint);
+            font-weight:600; margin:34px 0 12px; }
+  .panel{ display:flex; flex-wrap:wrap; gap:26px; align-items:flex-start;
+          background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:20px; }
+  canvas{ background:#060c15; border-radius:50%; box-shadow:0 0 0 1px var(--line), 0 12px 30px -18px #000; }
+  .controls{ display:grid; grid-template-columns:auto 1fr auto; gap:11px 14px; align-items:center; }
+  .controls .lab{ font-size:12.5px; color:var(--dim); }
+  .controls output{ font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:12.5px;
+                    color:var(--ink); min-width:64px; text-align:right; }
+  input[type=range]{ width:190px; accent-color:var(--solar); }
+  input[type=range]:focus-visible{ outline:2px solid var(--solar); outline-offset:3px; }
+  .flows{ font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:12px; color:var(--dim);
+          margin-top:14px; line-height:1.85; }
+  .flows b{ color:var(--ink); font-weight:600; }
+  .legend{ font-size:11.5px; color:var(--dim); line-height:1.7; }
+  .legend .h{ color:var(--ink); font-weight:600; display:block; margin:9px 0 3px; }
+  .sw{ display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:6px; vertical-align:middle; }
+  .cards{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; }
+  @media (max-width:640px){ .cards{ grid-template-columns:1fr; } }
+  .card{ background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:16px; }
+  .card h3{ margin:0 0 3px; font-size:15.5px; }
+  .card .cap{ color:var(--dim); font-size:12.5px; margin:0 0 12px; text-wrap:balance; }
+  .row{ display:flex; gap:15px; align-items:flex-start; }
+  .kv{ font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:11.5px; color:var(--dim); line-height:1.75; }
+  .kv b{ color:var(--ink); font-weight:600; }
+  .tags{ margin-top:9px; font-family:var(--sans); }
+  footer{ color:var(--faint); font-size:12px; margin-top:34px; border-top:1px solid var(--line); padding-top:14px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="langbar"><strong>EN</strong> · <a href="simulator-ca.html" hreflang="ca">CA</a></div>
+  <header>
+    <h1>Dashboard Solar — display simulator</h1>
+    <p>Reproduces the round-display render (<code>dashboard_solar.h</code> + the ESPHome display lambda) in the
+    browser. Move the sliders to set a household state; every flow shown is derived from the same balance the
+    firmware uses — <code>pv + import + discharge = load + charge + export</code>.</p>
+  </header>
+
+  <div class="eyebrow">Live</div>
+  <div class="panel">
+    <canvas id="live" width="480" height="480" style="width:300px;height:300px"></canvas>
+    <div style="flex:1;min-width:280px">
+      <div class="controls" id="controls"></div>
+      <div class="flows" id="flows"></div>
+    </div>
+    <div class="legend">
+      <span class="h">Outer — generation</span>
+      <span class="sw" style="background:var(--solar)"></span>self-used (pv − export)<br>
+      <span class="sw" style="background:var(--purple)"></span>exported
+      <span class="h">Inner — consumption</span>
+      <span class="sw" style="background:var(--blue)"></span>solar → house<br>
+      <span class="sw" style="background:var(--green)"></span>→ battery (charge)<br>
+      <span class="sw" style="background:var(--orange)"></span>battery → house<br>
+      <span class="sw" style="background:var(--red)"></span>grid → house (import)
+      <span class="h">Third — batteries</span>
+      🔋 home&nbsp;&nbsp;·&nbsp;&nbsp;🚗 Tesla&nbsp;(SoC %)
+    </div>
+  </div>
+
+  <div class="eyebrow">Documented usage cases</div>
+  <div class="cards" id="cards"></div>
+
+  <footer>Colours and geometry mirror the firmware palette (dark theme) and ring radii
+  (outer 96–110, inner 78–92, split 52–64). The clock and seconds tick are live on the panel above.</footer>
+</div>
+
+<script>
+const C=120;
+const P={ bg:'#060c15', text:'#eef4ff', text_dim:'#93a6c2',
+  bezel_major:'rgb(150,175,205)', bezel_minor:'rgb(80,100,125)',
+  solar:'#ffb300', solar_track:'rgb(110,90,30)',
+  f_house:'#3896f8', f_batt:'#4cc878', f_grid:'#b978eb',
+  f_from_batt:'#ff963c', f_from_grid:'#dc4646',
+  inner_track:'rgb(45,55,70)', battery:'#4cc878', sub_track:'rgb(60,75,90)',
+  value:'#dce7f6', seconds:'#ff5f5f' };
+const MONO='ui-monospace, Menlo, Consolas, monospace';
+const rad=d=>d*Math.PI/180;
+const fmt=w=>Math.abs(w)>=1000?(w/1000).toFixed(2)+' kW':w.toFixed(0)+' W';
+
+function flows(s){
+  const charge=Math.max(0,s.batt), discharge=Math.max(0,-s.batt);
+  const gridNet=(s.load+charge)-(s.pv+discharge);
+  const imp=Math.max(0,gridNet), exp=Math.max(0,-gridNet);
+  let blue=s.pv-exp-charge; if(blue<0)blue=0;
+  return { imp, exp, charge, discharge, blue, green:charge, orange:discharge,
+           purple:exp, darkred:imp, self_gen:Math.max(0,s.pv-exp) };
+}
+function fillArc(ctx,rin,rout,a0,a1,color){
+  ctx.beginPath(); ctx.arc(C,C,rout,rad(a0),rad(a1),false); ctx.arc(C,C,rin,rad(a1),rad(a0),true);
+  ctx.closePath(); ctx.fillStyle=color; ctx.fill();
+}
+function segColorAt(segs,w,track){ let cum=0; for(const s of segs){ if(s.w<=0)continue;
+  if(w>=cum&&w<cum+s.w)return s.c; cum+=s.w; } return track; }
+function stackedRing(ctx,rin,rout,segs,pmax,track){ const start=-220,end=40,sweep=260;
+  for(let a=start;a<=end+1e-3;a+=4) fillArc(ctx,rin,rout,a-1.2,a+1.2,segColorAt(segs,(a-start)/sweep*pmax,track)); }
+function splitGauge(ctx,rin,rout,bat,tes,bc,tc,track){ const N=16,span=110,h=2.2;
+  for(let i=0;i<N;i++){ const a=140+span*(i+0.5)/N; fillArc(ctx,rin,rout,a-h,a+h,bat>=(i+0.5)/N?bc:track); }
+  for(let i=0;i<N;i++){ const a=40-span*(i+0.5)/N;  fillArc(ctx,rin,rout,a-h,a+h,tes>=(i+0.5)/N?tc:track); } }
+function bezel(ctx){ for(let i=0;i<60;i++){ const a=rad(i*6-90),M=(i%5)===0,ro=118,ri=M?108:113;
+  ctx.beginPath(); ctx.moveTo(C+Math.cos(a)*ri,C+Math.sin(a)*ri); ctx.lineTo(C+Math.cos(a)*ro,C+Math.sin(a)*ro);
+  ctx.strokeStyle=M?P.bezel_major:P.bezel_minor; ctx.lineWidth=1; ctx.stroke(); } }
+function arcLine(ctx,r,a0,a1,c){ ctx.beginPath(); ctx.arc(C,C,r,rad(a0),rad(a1),false); ctx.strokeStyle=c; ctx.lineWidth=1; ctx.stroke(); }
+function connector(ctx,r,c,hg){ const e=Math.acos(Math.min(1,hg/r))*180/Math.PI; arcLine(ctx,r,40,e,c); arcLine(ctx,r,180-e,140,c); }
+
+function paint(ctx,s,opt){
+  ctx.fillStyle=P.bg; ctx.fillRect(0,0,240,240);
+  const f=flows(s), pmax=s.powerMax;
+  bezel(ctx);
+  stackedRing(ctx,96,110,[{w:f.self_gen,c:P.solar},{w:f.exp,c:P.f_grid}],pmax,P.solar_track);
+  stackedRing(ctx,78,92,[{w:f.blue,c:P.f_house},{w:f.green,c:P.f_batt},{w:f.orange,c:P.f_from_batt},{w:f.darkred,c:P.f_from_grid}],pmax,P.inner_track);
+  splitGauge(ctx,52,64,s.soc/100,s.tsoc/100,P.battery,P.f_house,P.sub_track);
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  const sB=fmt(s.pv),hB=fmt(s.load); ctx.font='bold 14px '+MONO;
+  connector(ctx,103,P.solar,ctx.measureText(sB).width/2+3); connector(ctx,85,P.f_house,ctx.measureText(hB).width/2+3);
+  ctx.fillStyle=P.f_house; ctx.fillText(hB,120,202); ctx.fillStyle=P.solar; ctx.fillText(sB,120,220);
+  ctx.font='18px sans-serif'; ctx.fillText('☀',120,57);
+  const now=new Date();
+  ctx.font='11px sans-serif'; ctx.fillStyle=P.text_dim;
+  ctx.fillText(opt&&opt.date?opt.date:now.toLocaleDateString(undefined,{weekday:'short',day:'numeric',month:'short'}),120,96);
+  ctx.font='22px '+MONO; ctx.fillStyle=P.text;
+  ctx.fillText(opt&&opt.time?opt.time:(String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0')),120,118);
+  if(opt&&opt.live) fillArc(ctx,103,118,now.getSeconds()*6-90-1.2,now.getSeconds()*6-90+1.2,P.seconds);
+  ctx.font='20px sans-serif'; ctx.fillText('🔋',95,167); ctx.fillText('🚗',145,167);
+  ctx.font='12px '+MONO; ctx.fillStyle=P.text;
+  ctx.fillText(Math.round(s.soc)+'%',95,183); ctx.fillText(Math.round(s.tsoc)+'%',145,183);
+}
+function renderTo(cv,s,opt){ const ctx=cv.getContext('2d'); const k=cv.width/240;
+  ctx.setTransform(k,0,0,k,0,0); ctx.clearRect(0,0,240,240); paint(ctx,s,opt); }
+
+/* live panel */
+const state={ pv:5000, load:800, batt:2000, soc:72, tsoc:80, powerMax:6000 };
+const defs=[ ['pv','Solar PV',0,8000,50],['load','House load',0,8000,50],
+  ['batt','Battery net (+ charge / − discharge)',-6000,6000,50],
+  ['soc','Home battery SoC',0,100,1],['tsoc','Tesla SoC',0,100,1],['powerMax','Power full-scale',2000,12000,500] ];
+const cont=document.getElementById('controls');
+for(const [k,label,mn,mx,st] of defs){
+  const l=document.createElement('div'); l.className='lab'; l.textContent=label;
+  const i=document.createElement('input'); i.type='range'; i.min=mn; i.max=mx; i.step=st; i.value=state[k];
+  const unit=(k==='soc'||k==='tsoc')?'%':'W';
+  const o=document.createElement('output'); o.textContent=state[k]+' '+unit;
+  i.oninput=()=>{ state[k]=+i.value; o.textContent=i.value+' '+unit; live(); };
+  cont.append(l,i,o);
+}
+const liveCv=document.getElementById('live'), flowsEl=document.getElementById('flows');
+function live(){ renderTo(liveCv,state,{live:true});
+  const f=flows(state);
+  flowsEl.innerHTML=`derived&nbsp; <b>export</b> ${fmt(f.exp)} · <b>import</b> ${fmt(f.imp)} · <b>charge</b> ${fmt(f.charge)} · <b>discharge</b> ${fmt(f.discharge)}<br>`+
+   `outer&nbsp; 🟡 ${fmt(f.self_gen)} + 🟣 ${fmt(f.exp)} = pv <b>${fmt(state.pv)}</b><br>`+
+   `inner&nbsp; 🔵 ${fmt(f.blue)} + 🟢 ${fmt(f.green)} + 🟠 ${fmt(f.orange)} + 🟥 ${fmt(f.darkred)} = load <b>${fmt(state.load)}</b>`;
+}
+
+/* scenario cards */
+const scenarios=[
+  { n:'Overproducing', c:'Sunny midday — solar covers the house, charges the battery, and exports the surplus.',
+    s:{pv:5000,load:800,batt:2000,soc:72,tsoc:80,powerMax:6000} },
+  { n:'Underproducing', c:'Evening — little sun; the house runs on solar + battery discharge + grid import.',
+    s:{pv:500,load:2500,batt:-1500,soc:45,tsoc:60,powerMax:6000} },
+  { n:'Self-sufficient', c:'Solar covers the whole load with a little left to charge — no grid either way.',
+    s:{pv:2200,load:1800,batt:400,soc:90,tsoc:100,powerMax:6000} },
+  { n:'Night', c:'No generation — the battery discharges and the grid tops up the rest.',
+    s:{pv:0,load:1200,batt:-800,soc:30,tsoc:55,powerMax:6000} },
+];
+const cardsEl=document.getElementById('cards');
+for(const sc of scenarios){
+  const f=flows(sc.s);
+  const parts=[]; if(f.self_gen>0)parts.push('🟡 self-used'); if(f.exp>0)parts.push('🟣 export');
+  if(f.blue>0)parts.push('🔵 →house'); if(f.green>0)parts.push('🟢 charge');
+  if(f.orange>0)parts.push('🟠 batt→house'); if(f.darkred>0)parts.push('🟥 import');
+  const card=document.createElement('div'); card.className='card';
+  card.innerHTML=`<h3>${sc.n}</h3><p class="cap">${sc.c}</p>`;
+  const row=document.createElement('div'); row.className='row';
+  const cv=document.createElement('canvas'); cv.width=300; cv.height=300; cv.style.width='150px'; cv.style.height='150px';
+  const kv=document.createElement('div'); kv.className='kv';
+  kv.innerHTML=`pv <b>${fmt(sc.s.pv)}</b> · load <b>${fmt(sc.s.load)}</b><br>`+
+    `battery ${sc.s.batt>=0?'charge':'discharge'} <b>${fmt(Math.abs(sc.s.batt))}</b><br>`+
+    `grid ${f.imp>0?'import <b>'+fmt(f.imp)+'</b>':(f.exp>0?'export <b>'+fmt(f.exp)+'</b>':'—')}<br>`+
+    `🔋 <b>${sc.s.soc}%</b> · 🚗 <b>${sc.s.tsoc}%</b><div class="tags">${parts.join(' · ')}</div>`;
+  row.append(cv,kv); card.append(row); cardsEl.append(card);
+  renderTo(cv,sc.s,{date:'Sat, 3 Aug',time:'12:34'});
+}
+
+live();
+setInterval(live,1000);
+</script>
+</body>
+</html>

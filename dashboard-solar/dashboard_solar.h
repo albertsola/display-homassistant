@@ -259,4 +259,25 @@ void draw_sub_gauge(It &it, int cx, int cy, float pct, Color active, Color track
   }
 }
 
+// Third ring, split BAT-left / KIT-right, both rising toward the top (ticked polygons):
+//   battery arc 140deg..250deg (lower-left -> upper-left), fills from 140
+//   tesla   arc  40deg..-70deg (lower-right -> upper-right), fills from 40
+// leaves a ~40deg gap at the top (weather icon) and a wide gap at the bottom (value labels).
+template<class It>
+void draw_split_gauge(It &it, int r_in, int r_out, float bat, float tes,
+                      Color bat_col, Color tes_col, Color track) {
+  const int N = 16;                 // 16 ticks per side
+  const float span = 110.0f, half = 2.2f;
+  for (int i = 0; i < N; i++) {      // battery: 140deg..250deg, fills from 140 (lower-left up)
+    float a = 140.0f + span * (i + 0.5f) / N;
+    bool on = clamp01(bat) >= (i + 0.5f) / N;
+    fill_arc(it, CENTER, CENTER, r_in, r_out, a - half, a + half, on ? bat_col : track);
+  }
+  for (int i = 0; i < N; i++) {      // tesla: 40deg..-70deg, fills from 40 (lower-right up)
+    float a = 40.0f - span * (i + 0.5f) / N;
+    bool on = clamp01(tes) >= (i + 0.5f) / N;
+    fill_arc(it, CENTER, CENTER, r_in, r_out, a - half, a + half, on ? tes_col : track);
+  }
+}
+
 }  // namespace ds
