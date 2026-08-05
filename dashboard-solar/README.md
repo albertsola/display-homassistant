@@ -1,180 +1,125 @@
-# Dashboard Solar — spec
+# Dashboard Solar
 
-An ESPHome **solar-energy** dashboard for the round display, in the **same watch-face
-style as `round-dashboard`** (concentric ring gauges + sub-dials + a centre readout, dark/
-light themed) — but showing a home solar system: **Solar, Battery, Grid, Home**, and, on
-the inner ring, **where the energy is flowing** right now. Home-Assistant-driven.
+A round energy dashboard for a small watch-face style display, driven by Home Assistant.
+It shows a home solar system at a glance — **solar, battery, grid, and home usage** — plus
+**where the energy is flowing** right now.
 
-Companion to `round-dashboard`; same board, toolchain, and `rd::` drawing helpers. This
-file is the single source of truth for the design — build it up here, then implement
-`dashboard-solar.yaml` (+ helpers) against it.
+It comes in two forms that share the same look:
 
-Confidence markers, like `hardwarespec.md`: **[SET]** decided · **[DECIDE]** open design
-choice · **[TBD]** needs a value/entity from the user's HA.
+- **ESPHome firmware** for a physical round display (`dashboard-solar.yaml` + `dashboard_solar.h`).
+- **A Home Assistant custom card** (`dashboard-solar-card.js`) that renders the same display
+  inside the HA dashboard.
 
----
+## What the screen shows
 
-## Focus — what the screen is about  [SET]
+Three concentric rings around a central clock and weather readout:
 
-Primary content, always on screen and glanceable:
+- **Outer ring — where power comes from (sources).** Solar generation, the battery
+  discharging to the house, and grid import.
+- **Inner ring — what power is spent on (usage).** House consumption, home-battery charging,
+  EV charging, and anything exported to the grid.
+- **Inner split ring — battery levels.** Home battery on the left, electric vehicle on the
+  right.
 
-1. **Solar** — power the panels are producing now (W) + today's kWh.
-2. **Battery** — **state of charge %** and charge/discharge (signed W).
-3. **Home usage** — current household consumption (W).
-4. **Grid** — importing vs exporting, and how much (signed W).
+The centre shows the current weather (icon, temperature, humidity), the date, and the time.
+The outer bezel turns **red** when presence is detected.
 
-Plus the signature element — the **inner flow ring** — which shows *where the energy is
-going*, exploiting the invariant below.
+Both rings share one power scale, so segment lengths are directly comparable, and the two
+rings balance: everything coming in (solar + import + battery discharge) equals everything
+going out (house + battery charge + EV + export).
 
-## Hardware  [SET]
+### Ring colours
 
-Same device as `round-dashboard`: **ESP32-2424S012N** — round **1.28" GC9A01**, 240×240,
-ESP32-C3, USB-C powered, no touch (`N`). Board spec in the repo's `hardwarespec.md`; the
-printed enclosures in `case/` apply unchanged (`flat_case`, `angular_stand`). Sole physical
-input is the **GPIO9 BOOT** press.
+**Outer ring — sources**
 
-## Key invariant  [SET]
+| Colour | Meaning |
+|--------|---------|
+| 🟡 yellow | solar generation |
+| 🟢 green | battery discharging to the house |
+| 🟥 red | imported from the grid |
 
-**100% of solar is always used** — PV is never curtailed, so at every instant it is fully
-allocated across house / battery / grid. This makes the flows fully determined by the four
-base readings (no ambiguous heuristic).
+**Inner ring — usage**
 
-**The two rings, at a glance:** the **outer ring = energy SOURCES** (where the house's power
-comes from) and the **inner ring = energy USAGE** (what it is spent on). Both share one
-`power_max` scale.
+| Colour | Meaning |
+|--------|---------|
+| 🔵 blue | house consumption (excluding the EV) |
+| 🟢 green | charging the home battery |
+| 🟣 purple | charging the EV |
+| 🟥 red | exported to the grid |
 
-## Screen layout (round 240×240) — round-dashboard style  [SET, details DECIDE]
+## Home Assistant entities
 
-Mirrors round-dashboard's skeleton (outer bezel + two concentric rings + two sub-dials +
-centre readout + on-top second tick) and reuses the `rd::` helpers + dark/light `Palette`.
+Every value is a live, measured sensor — nothing is derived from sign conventions.
 
-```
- ┌ bezel = 60 Swiss ticks; SECOND tick — ring GREEN (BOOT pressed) / RED (presence) ┐
- │  ┌ Sources ring (outer) ─────────────── Usage ring (inner) ┐              │
- │  │                     ☀  ← weather                                         ││
- │  │                 Sat, 3 Aug                                               ││
- │  │                 12:34         ← centre clock (HH:MM)                      ││
- │  │        🔋62%    third ring: BAT left / EV right    🚗78%                 ││
- │  │           0.94 kW  ← home usage (inner ring) + connector arc             ││
- │  │           1.82 kW  ← solar (outer ring) + connector arc ─────────────────┘│
- └──────────────────────────────────────────────────────────────────────────────┘
-```
+| Value | Entity |
+|-------|--------|
+| Solar production | `sensor.powermon_totalsolar` |
+| House usage | `sensor.consum_total` |
+| Home battery level | `sensor.byd_battery_box_premium_hv_state_of_charge` |
+| Battery charging | `sensor.solarnet_power_battery_charge` |
+| Battery discharging | `sensor.solarnet_power_battery_discharge` |
+| Grid export | `sensor.solarnet_power_grid_export` |
+| Grid import | `sensor.solarnet_power_grid_import` |
+| EV charging | `sensor.kitt_charger_power` |
+| EV battery level | `sensor.kitt_battery` |
+| Presence | `binary_sensor.cam_entrada_moviment_3` |
+| Weather | `weather.ivallm3` |
 
-| Element (geometry from round-dashboard) | dashboard-solar role |
-|---|---|
-| **Outer ring** (r96–110) | **Energy sources** — stacked: 🟡 solar self-used (`pv − export`) + 🟠 battery→house (discharge) + 🟥 grid import + ⚪ export (last); shared `power_max` scale. Bottom **value label** `pv` at y220, **connector arc** (r103) |
-| **Inner ring** (r78–92) | **Energy usage** — stacked 🔵 house (− EV) + 🟢 home-battery charge + 🟣 EV charge. Bottom **value label** = house `load` at y202, **connector arc** (r85) |
-| **Third ring** (r≈52–64) | **Batteries**, split & rising to the top: 🔋 home battery (left, fills lower-left→up) + 🚗 EV (right, fills lower-right→up, i.e. right→left). MDI **icon + `%`** on each side; ~40° top gap for the weather glyph, wide bottom gap for the labels. Replaces the two old sub-dials. |
-| **Centre** (y96/y118) | **Date + `HH:MM`** clock (no seconds; home usage labels the inner ring) |
-| **Top glyph** (y57) | **Weather icon** (apt — solar tracks weather) |
-| **Bezel** | Swiss 60-tick ring with a seconds tick; whole ring goes **green** while the **BOOT button** is pressed, **red** on **presence** (matches round-dashboard) |
+## The physical display (ESPHome)
 
-## Rings — sources (outer) + usage (inner)  [SET]
+**Hardware:** an ESP32-2424S012N — a round 1.28" GC9A01 display (240×240, ESP32-C3, USB-C, no
+touch). Printed enclosures live in `case/`. The only physical input is the BOOT button.
 
-Two stacked rings on one shared `power_max` scale (arc length = actual watts).
-
-**Outer ring — energy SOURCES** (where the house's power comes from):
-
-| Colour | Segment | Watts |
-|--------|---------|-------|
-| 🟡 **amber** | solar produced, self-used | `pv − export` |
-| 🟠 **dark orange** | battery → house (discharge) | `discharge` |
-| 🟥 **red** | grid import | `import` |
-| ⚪ **light grey** | exported to the grid (last) | `export` |
-
-**Inner ring — energy USAGE** (what the power is spent on):
-
-| Colour | Segment | Watts |
-|--------|---------|-------|
-| 🔵 **blue** | house consumption, excluding the EV | `load − ev_charge` |
-| 🟢 **green** | home battery charge | `charge` |
-| 🟣 **purple** | EV charge | `ev_charge` |
-
-Every value is a **measured** sensor (charge, discharge, import, export, `ev_charge`), so
-nothing is derived. `power_max` is a shared full-scale (≥ expected peak) so neither ring
-overflows — a config `number:` like round-dashboard's gauge maxes.
-
-```
-// outer (sources)
-self_used = max(0, pv - export);   discharge;   import;   export
-// inner (usage)
-house_ev  = max(0, load - ev_charge);   charge;   ev_charge
-// each arc angle = watts / power_max * full_sweep
-```
-
-## Data — Home Assistant entities  [SET]
-
-Pulled over the ESPHome API like `round-dashboard` (set in `substitutions:`).
-
-| Field | Entity | Notes |
-|-------|--------|-------|
-| Solar production `pv` | `sensor.powermon_totalsolar` | live W; outer 🟡 (`pv−export`) + inner |
-| House usage `load` | `sensor.consum_total` | live W (incl. EV); inner 🔵 (`load−ev`) |
-| Home battery SoC (%) | `sensor.byd_battery_box_premium_hv_state_of_charge` | third ring, left |
-| Battery charge (W) | `sensor.solarnet_power_battery_charge` | inner 🟢 |
-| Battery discharge (W) | `sensor.solarnet_power_battery_discharge` | outer 🟠 (battery→house) |
-| Grid **export** (W) | `sensor.solarnet_power_grid_export` | outer ⚪ light grey |
-| Grid **import** (W) | `sensor.solarnet_power_grid_import` | outer 🟥 red |
-| EV charge (W) | `sensor.kitt_charger_power` | inner 🟣 (EV charge) |
-| EV battery SoC (%) | `sensor.kitt_battery` | third ring, right |
-| Presence | `binary_sensor.cam_entrada_moviment_3` | red outer ring |
-| Weather (icon + temp + humidity) | `weather.ivallm3` | top: condition icon, `temperature`/`humidity` attrs |
-
-Notes:
-- **All flows are measured** — grid import/export and battery charge/discharge are each their
-  own non-negative sensor, so no sign conventions and no derivation. Net battery power for the
-  sub-dial = `charge − discharge`; `blue` (solar→house) = `pv − export − charge`.
-- **Two batteries on the sub-dials:** home battery SoC (left), EV car SoC (right). Grid
-  import/export are shown on the rings, so neither needs a sub-dial.
-- Optional/missing: **PV today (kWh)** for an outer-ring subtitle — not wired [TBD].
-
-Data source: **Home Assistant**; Fronius/SolarNet inverter + BYD home battery + EV.
-
-## Controls exposed to HA  [IMPLEMENTED]
-
-- **Dark Mode**, **Screen** on/off, **Brightness**, **Screen Rotation** — reused from round-dashboard.
-- **Power full-scale** (`power_max`, number) — the shared ring scale (batteries are 0–100%).
-- **Boot Button** (binary sensor) — published to HA; a press also flashes the green ring.
-
-Gauges always use the **segmented tick** style (rendered with filled polygons, no gaps). The
-solid-fill path still exists in `dashboard_solar.h` (the `ticked` arg) but isn't exposed — the
-lambda passes `true` everywhere, so re-enabling it later is a one-line change.
-
-## Firmware structure  [IMPLEMENTED]
-
-This folder is **independent and self-contained** (`dashboard-solar.yaml`, `dashboard_solar.h`,
-`Makefile`, `docker-compose.yml`, `secrets.yaml.sample`). Build from inside the folder:
+This folder is self-contained. Build from inside it with Docker:
 
 ```bash
 cd dashboard-solar
-cp secrets.yaml.sample secrets.yaml   # fill in Wi-Fi
+cp secrets.yaml.sample secrets.yaml   # fill in your Wi-Fi
 make build                            # or: make run device=<ip>
 ```
 
-- **`dashboard-solar.yaml`** — ESPHome config (`includes: dashboard_solar.h`; `!secret` from
-  this folder's `secrets.yaml`).
-- **`dashboard_solar.h`** — self-contained `ds::` helper header (own `Palette` +
-  `make_palette`, and copies of the primitives it needs: `draw_bezel`, `draw_alert_ring`,
-  `draw_seconds_tick`, `draw_ring_gauge`, `draw_stacked_ring`, `draw_split_gauge`,
-  `draw_sub_gauge`, `arc_line`, `draw_connector`, `scale_value`, `weather_glyph`, `fmt_power`,
-  `nz`). Kept separate from round-dashboard so the two tracks evolve independently.
-- **Ring primitives:** `draw_stacked_ring` (coloured segments, generation/consumption rings)
-  and `draw_split_gauge` (the third ring, split BAT-left / EV-right rising to the top) — both
-  built on `fill_arc` polygon fills.
-- Lambda reads the measured sensors, builds the segments, and draws: bezel (or green
-  BOOT-press / red presence ring) → outer generation ring → inner consumption ring → the two
-  ring value labels + connector arcs → weather icon → centre `HH:MM` clock → split battery/
-  EV third ring (icon + % each side) → seconds tick. Thin lambda; geometry/theme in the header.
+- `dashboard-solar.yaml` — your device config (name, Wi-Fi, API key). It imports the shared
+  package below.
+- `dashboard-solar-package.yaml` — the reusable design (display, fonts, and the drawing logic),
+  with the entities set as overridable defaults.
+- `dashboard_solar.h` — the drawing helpers.
+- `example-device.yaml` — a template for adopting the design on someone else's system: they
+  override just the entities and supply their own secrets, importing the package over GitHub.
 
-**Status:** `make build` compiles clean (Flash ~60%). Not yet flashed to hardware; entity
-values and on-screen placement unverified against live HA.
+**Controls exposed to HA:** dark mode, screen on/off, brightness, rotation, and the shared
+power scale. The BOOT button is published as a sensor.
 
-## Open questions
+## The Home Assistant card
 
-1. Exact dark/light **hex** for the colours (amber + blue/green/purple/orange/dark-red + the green/red rings).
-2. Grid↔battery flows (grid charging / battery export) — keep **off**?
-3. `power_max` full-scale value (≥ peak PV and peak load).
+`dashboard-solar-card.js` renders the same display inside the HA frontend from live entity
+states. It's a compact, resizable widget on Sections dashboards, with a visual editor for
+picking entities and choosing a light/dark theme.
 
-*Resolved:* PV/load are live W; grid & battery are all measured non-negative sensors (no
-signs, no derivation); centre = clock; bezel = Swiss ticks, green on BOOT press, red on
-presence; entity IDs known (BYD + Fronius SolarNet + EV `kitt_battery`).
+**Install** — add a dashboard resource (Settings → Dashboards → ⋮ → Resources), type
+**JavaScript module**:
+
+```
+https://cdn.jsdelivr.net/gh/albertsola/display-homassistant@main/dashboard-solar/dashboard-solar-card.js
+```
+
+jsDelivr caches branch URLs, so after an update either pin `@<tag-or-commit>` in the URL or
+purge the cache once at
+`https://purge.jsdelivr.net/gh/albertsola/display-homassistant@main/dashboard-solar/dashboard-solar-card.js`.
+
+You can also host the file locally (`/config/www/` → `/local/…`) or install it through HACS.
+
+**Add the card** — all entity keys are optional and default to the entities above:
+
+```yaml
+type: custom:dashboard-solar-card
+theme: dark          # dark | light | auto (auto follows the HA theme)
+power_max: 8000      # ring full-scale in W
+# pv: sensor.powermon_totalsolar
+# load: sensor.consum_total
+# ...override any entity
+```
+
+## Simulator
+
+`simulator.html` (and `simulator-ca.html`, in Catalan) reproduce the display in the browser
+with sliders and example scenarios — handy for tuning colours and layout without hardware.

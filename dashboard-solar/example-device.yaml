@@ -1,0 +1,48 @@
+# =============================================================================
+# Dashboard Solar — EXAMPLE per-device config for ADOPTERS
+# -----------------------------------------------------------------------------
+# Copy this file, rename it (e.g. my-dashboard.yaml), and edit the three sections
+# below. The display, fonts and logic are pulled from the shared package over
+# GitHub — you never fork it. Then flash:
+#     esphome run my-dashboard.yaml            (or `make run file=my-dashboard.yaml device=<ip>`)
+#
+# Requires a secrets.yaml next to this file with:  wifi_ssid, wifi_password,
+# dashboard_solar_key  (generate a key: `esphome secrets` or any 32-byte base64).
+# =============================================================================
+
+# 1) YOUR entities — override only the ones that differ from the package defaults.
+#    Every key is optional; omit one to keep the package default.
+substitutions:
+  pv_entity: sensor.CHANGE_ME_solar_total              # solar production, W
+  load_entity: sensor.CHANGE_ME_house_load             # house usage, W
+  battery_soc_entity: sensor.CHANGE_ME_battery_soc     # home battery %
+  battery_charge_entity: sensor.CHANGE_ME_batt_charge      # W, >= 0
+  battery_discharge_entity: sensor.CHANGE_ME_batt_discharge  # W, >= 0
+  grid_export_entity: sensor.CHANGE_ME_grid_export     # W, >= 0
+  grid_import_entity: sensor.CHANGE_ME_grid_import     # W, >= 0
+  electric_vehicle_soc_entity: sensor.CHANGE_ME_ev_soc # EV battery %
+  ev_charge_entity: sensor.CHANGE_ME_ev_charge         # EV charging power, W
+  weather_entity: weather.CHANGE_ME                    # icon + temp + humidity
+  presence_entity: binary_sensor.CHANGE_ME_presence    # presence -> red ring
+
+# 2) The shared design, imported from GitHub (pin @<tag> for a fixed version).
+packages:
+  dashboard_solar: github://albertsola/display-homassistant/dashboard-solar/dashboard-solar-package.yaml@main
+
+# 3) YOUR device identity + network + secrets (never shared).
+esphome:
+  name: my-dashboard
+  friendly_name: My Dashboard Solar
+
+api:
+  encryption:
+    key: !secret dashboard_solar_key    # your own 32-byte base64 key
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: Dashboard Solar Fallback Hotspot
+    password: "changeme12345"
+
+captive_portal:
