@@ -118,10 +118,12 @@ function fillArc(ctx,rin,rout,a0,a1,color){
 function segColorAt(segs,w,track){ let cum=0; for(const s of segs){ if(s.w<=0)continue;
   if(w>=cum&&w<cum+s.w)return s.c; cum+=s.w; } return track; }
 function stackedRing(ctx,rin,rout,segs,pmax,track){ const start=-220,end=40,sweep=260;
-  for(let a=start;a<=end+1e-3;a+=4) fillArc(ctx,rin,rout,a-1.2,a+1.2,segColorAt(segs,(a-start)/sweep*pmax,track)); }
+  const total=segs.reduce((s,g)=>s+(g.w>0?g.w:0),0), step=(4/sweep)*pmax;   // energy per tick
+  for(let a=start;a<=end+1e-3;a+=4){ const w=(a-start)/sweep*pmax;           // tick's starting energy
+    fillArc(ctx,rin,rout,a-1.2,a+1.2,(w+step<=total+1e-3)?segColorAt(segs,w,track):track); } }  // full tick only
 function splitGauge(ctx,rin,rout,bat,tes,bc,tc,track){ const N=16,span=110,h=2.2;
-  for(let i=0;i<N;i++){ const a=140+span*(i+0.5)/N; fillArc(ctx,rin,rout,a-h,a+h,bat>=(i+0.5)/N?bc:track); }
-  for(let i=0;i<N;i++){ const a=40-span*(i+0.5)/N;  fillArc(ctx,rin,rout,a-h,a+h,tes>=(i+0.5)/N?tc:track); } }
+  for(let i=0;i<N;i++){ const a=140+span*(i+0.5)/N; fillArc(ctx,rin,rout,a-h,a+h,bat>=(i+1)/N?bc:track); }
+  for(let i=0;i<N;i++){ const a=40-span*(i+0.5)/N;  fillArc(ctx,rin,rout,a-h,a+h,tes>=(i+1)/N?tc:track); } }
 function bezel(ctx){ for(let i=0;i<60;i++){ const a=rad(i*6-90),M=(i%5)===0,ro=118,ri=M?108:113;
   ctx.beginPath(); ctx.moveTo(C+Math.cos(a)*ri,C+Math.sin(a)*ri); ctx.lineTo(C+Math.cos(a)*ro,C+Math.sin(a)*ro);
   ctx.strokeStyle=M?P.bezel_major:P.bezel_minor; ctx.lineWidth=1; ctx.stroke(); } }
@@ -132,10 +134,10 @@ function paint(ctx,s,opt){
   ctx.fillStyle=P.bg; ctx.fillRect(0,0,240,240);
   const f=flows(s), pmax=s.powerMax;
   bezel(ctx);
-  // outer = sources: solar self-used, export, battery discharge, import
-  stackedRing(ctx,96,110,[{w:f.self_gen,c:P.solar},{w:f.discharge,c:P.f_from_batt},{w:f.imp,c:P.f_from_grid},{w:f.exp,c:P.f_grid}],pmax,P.solar_track);
-  // inner = usage: house-EV, home battery charge, EV charge
-  stackedRing(ctx,78,92,[{w:f.house_ev,c:P.f_house},{w:f.charge,c:P.f_batt},{w:f.ev,c:P.electric_vehicle}],pmax,P.inner_track);
+  // outer = sources: solar generation, battery discharge, grid import
+  stackedRing(ctx,96,110,[{w:s.pv,c:P.solar},{w:f.discharge,c:P.f_batt},{w:f.imp,c:P.f_from_grid}],pmax,P.solar_track);
+  // inner = usage: house-EV, home battery charge, EV charge, export
+  stackedRing(ctx,78,92,[{w:f.house_ev,c:P.f_house},{w:f.charge,c:P.f_batt},{w:f.ev,c:P.electric_vehicle},{w:f.exp,c:P.f_from_grid}],pmax,P.inner_track);
   splitGauge(ctx,52,64,s.soc/100,s.tsoc/100,P.battery,P.electric_vehicle,P.sub_track);
   ctx.textAlign='center'; ctx.textBaseline='middle';
   const sB=fmt(s.pv),hB=fmt(s.load); ctx.font='bold 14px '+MONO;
@@ -174,8 +176,8 @@ for(const [k,label,mn,mx,st] of defs){
 const liveCv=document.getElementById('live'), flowsEl=document.getElementById('flows');
 function live(){ renderTo(liveCv,state,{live:true});
   const f=flows(state);
-  flowsEl.innerHTML=`sources&nbsp; 🟡 self-used <b>${fmt(f.self_gen)}</b> · 🟠 batt→house <b>${fmt(f.discharge)}</b> · 🟥 import <b>${fmt(f.imp)}</b> · ⚪ export <b>${fmt(f.exp)}</b><br>`+
-   `usage&nbsp;&nbsp;&nbsp; 🔵 house−EV <b>${fmt(f.house_ev)}</b> · 🟢 batt charge <b>${fmt(f.charge)}</b> · 🟣 EV <b>${fmt(f.ev)}</b>`;
+  flowsEl.innerHTML=`sources&nbsp; 🟡 solar <b>${fmt(state.pv)}</b> · 🟢 batt→house <b>${fmt(f.discharge)}</b> · 🟥 import <b>${fmt(f.imp)}</b><br>`+
+   `usage&nbsp;&nbsp;&nbsp; 🔵 house−EV <b>${fmt(f.house_ev)}</b> · 🟢 batt charge <b>${fmt(f.charge)}</b> · 🟣 EV <b>${fmt(f.ev)}</b> · 🟥 export <b>${fmt(f.exp)}</b>`;
 }
 
 /* scenario cards */
@@ -192,9 +194,9 @@ const scenarios=[
 const cardsEl=document.getElementById('cards');
 for(const sc of scenarios){
   const f=flows(sc.s);
-  const parts=[]; if(f.self_gen>0)parts.push('🟡 self-used');
-  if(f.discharge>0)parts.push('🟠 batt→house'); if(f.imp>0)parts.push('🟥 import'); if(f.exp>0)parts.push('⚪ export');
-  if(f.house_ev>0)parts.push('🔵 house'); if(f.charge>0)parts.push('🟢 batt charge'); if(f.ev>0)parts.push('🟣 EV');
+  const parts=[]; if(sc.s.pv>0)parts.push('🟡 solar');
+  if(f.discharge>0)parts.push('🟢 batt→house'); if(f.imp>0)parts.push('🟥 import');
+  if(f.house_ev>0)parts.push('🔵 house'); if(f.charge>0)parts.push('🟢 batt charge'); if(f.ev>0)parts.push('🟣 EV'); if(f.exp>0)parts.push('🟥 export');
   const card=document.createElement('div'); card.className='card';
   card.innerHTML=`<h3>${sc.n}</h3><p class="cap">${sc.c}</p>`;
   const row=document.createElement('div'); row.className='row';

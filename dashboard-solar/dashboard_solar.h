@@ -168,7 +168,7 @@ void draw_ring_gauge(It &it, int inner, int outer, float pct, Color active, Colo
     if (limit > start + 0.5f) fill_arc(it, CENTER, CENTER, inner, outer, start, limit, active);
   } else {
     for (float a = start; a <= end + 1e-3f; a += 4.0f)
-      fill_arc(it, CENTER, CENTER, inner, outer, a - 1.2f, a + 1.2f, a <= limit ? active : track);
+      fill_arc(it, CENTER, CENTER, inner, outer, a - 1.2f, a + 1.2f, a + 4.0f <= limit + 1e-3f ? active : track);
   }
 }
 
@@ -231,11 +231,14 @@ void draw_stacked_ring(It &it, int inner, int outer, const Seg *segs, int n,
       if (start + (cum / power_max) * sweep >= end) break;   // ring full
     }
   } else {
-    // discrete 4deg blocks, coloured by the segment at each block (filled polygons)
+    // discrete 4deg blocks; a tick lights only once its FULL energy quantum is covered
+    float total = 0.0f;
+    for (int i = 0; i < n; i++) if (segs[i].watts > 0.0f) total += segs[i].watts;
+    float step = (4.0f / sweep) * power_max;   // energy one tick represents
     for (float a = start; a <= end + 1e-3f; a += 4.0f) {
-      float w = (a - start) / sweep * power_max;
-      fill_arc(it, CENTER, CENTER, inner, outer, a - 1.2f, a + 1.2f,
-               seg_color_at(segs, n, w, track));
+      float w = (a - start) / sweep * power_max;   // this tick's starting energy
+      Color c = (w + step <= total + 1e-3f) ? seg_color_at(segs, n, w, track) : track;
+      fill_arc(it, CENTER, CENTER, inner, outer, a - 1.2f, a + 1.2f, c);
     }
   }
 }
@@ -254,7 +257,7 @@ void draw_sub_gauge(It &it, int cx, int cy, float pct, Color active, Color track
     const int N = 16;
     for (int i = 0; i < N; i++) {
       float a = start + sweep * i / (N - 1);
-      bool on = pct >= (i + 0.5f) / N;
+      bool on = pct >= (i + 1.0f) / N;   // full tick only
       fill_arc(it, cx, cy, inner, outer, a - 2.5f, a + 2.5f, on ? active : track);
     }
   }
@@ -271,12 +274,12 @@ void draw_split_gauge(It &it, int r_in, int r_out, float bat, float tes,
   const float span = 110.0f, half = 2.2f;
   for (int i = 0; i < N; i++) {      // battery: 140deg..250deg, fills from 140 (lower-left up)
     float a = 140.0f + span * (i + 0.5f) / N;
-    bool on = clamp01(bat) >= (i + 0.5f) / N;
+    bool on = clamp01(bat) >= (i + 1.0f) / N;   // full tick only
     fill_arc(it, CENTER, CENTER, r_in, r_out, a - half, a + half, on ? bat_col : track);
   }
   for (int i = 0; i < N; i++) {      // EV: 40deg..-70deg, fills from 40 (lower-right up)
     float a = 40.0f - span * (i + 0.5f) / N;
-    bool on = clamp01(tes) >= (i + 0.5f) / N;
+    bool on = clamp01(tes) >= (i + 1.0f) / N;   // full tick only
     fill_arc(it, CENTER, CENTER, r_in, r_out, a - half, a + half, on ? tes_col : track);
   }
 }
