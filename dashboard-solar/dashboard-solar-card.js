@@ -111,8 +111,7 @@ function connector(ctx, r, c, hg) { const e = Math.acos(Math.min(1, hg / r)) * 1
 
 function paint(ctx, d, P) {
   ctx.setTransform(2, 0, 0, 2, 0, 0);
-  ctx.clearRect(0, 0, 240, 240);
-  ctx.fillStyle = P.bg; ctx.fillRect(0, 0, 240, 240);
+  ctx.clearRect(0, 0, 240, 240);   // fully transparent — gauges sit on the HA card background (no disc)
   const house_ev = Math.max(0, d.load - d.ev);
   const now = new Date(), sec = now.getSeconds();
 
@@ -200,7 +199,7 @@ class DashboardSolarCard extends HTMLElement {
     const theme = c.theme || 'dark';
     const dark = theme === 'auto' ? !!(this._hass.themes && this._hass.themes.darkMode) : theme !== 'light';
     const pal = dark ? PALETTES.dark : PALETTES.light;
-    if (this._card) this._card.style.background = pal.bg;
+    // leave the ha-card background to Home Assistant's theme so the widget matches other cards
     // green ring = linked switch is ON, or (no switch) momentary while pressed — matches BOOT
     const sw = c.switch_entity;
     const swOn = !!(sw && this._hass.states[sw] && this._hass.states[sw].state === 'on');
@@ -299,7 +298,9 @@ customElements.define('dashboard-solar-card-editor', DashboardSolarCardEditor);
 
 window.customCards = window.customCards || [];
 window.customCards.push({ type: 'dashboard-solar-card', name: 'Dashboard Solar',
-  description: 'Round solar-energy display (sources/usage rings + battery/EV)' });
-const VERSION = '1.0.0';
+  description: 'Round solar-energy display (sources/usage rings + battery/EV)',
+  preview: true,                                                   // live preview in the card picker
+  documentationURL: 'https://github.com/albertsola/dashboard-solar-card' });
+const VERSION = '1.1.2';
 console.info('%c DASHBOARD-SOLAR-CARD %c v' + VERSION + ' ',
   'background:#ffd60a;color:#111;font-weight:700', 'background:#060c15;color:#ffd60a');

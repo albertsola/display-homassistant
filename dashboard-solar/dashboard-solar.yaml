@@ -31,6 +31,6 @@ wifi:
   # New device: set a stable IP (DHCP reservation) and add `use_address:` here once known.
   ap:
     ssid: Dashboard Solar Fallback Hotspot
-    password: "zbM8eexLsZ2C"
+    password: "1234567890"
 
 captive_portal:

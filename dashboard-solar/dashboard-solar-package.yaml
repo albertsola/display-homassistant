@@ -55,9 +55,12 @@ ota:
   - platform: esphome
 
 time:
-  - platform: sntp
+  # Time comes from Home Assistant over the API (no NTP/internet needed).
+  # `timezone:` is deliberately OMITTED: without it ESPHome applies the timezone
+  # Home Assistant sends with each sync (DST rules included), so the clock always
+  # matches HA. Hardcode a `timezone:` here only if you want to override HA.
+  - platform: homeassistant
     id: ha_time
-    timezone: Europe/London
 
 spi:
   clk_pin: GPIO6
